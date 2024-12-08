@@ -18,7 +18,7 @@ public:
       throw std::invalid_argument("Divisor must be non-zero");
     }
 
-    int k = BIT_WIDTH + _shift;
+    uint32_t k = BIT_WIDTH + _shift;
     // if k >= 2 * BIT_WIDTH, (uint64_t(1) << k) will overflow
     uint64_t m =
         _shift < BIT_WIDTH
@@ -28,7 +28,7 @@ public:
     _magic = static_cast<uint32_t>(m);
 
     // handles d == 1
-    _sh_0 = _shift < 1 ? 0 : 1;
+    _sh_0 = _shift < 1U ? 0U : 1U;
     _sh_1 = _shift - _sh_0;
   }
 
@@ -91,7 +91,13 @@ private:
    * @param x Non-zero unsigned integer.
    * @return uint32_t
    */
-  static inline uint32_t log2down(uint32_t x) { return 31U - __builtin_clz(x); }
+  static inline uint32_t log2down(uint32_t x) {
+#if defined(_MSC_VER)
+    return 31U - __lzcnt(x);
+#else
+    return 31U - __builtin_clz(x);
+#endif
+  }
 
   /**
    * @brief Compute the round-up integer log2 of x.

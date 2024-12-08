@@ -38,9 +38,9 @@ void test_div_bounded(const U32Div &div, bool large_n = false) {
     total_time_fast += duration_fast.count();
   }
 
-  printf("d: %u,\tslow: %lld us,\tfast: %lld us,\tspeedup: %f\n", d,
+  printf("d: %u,\tslow: %lld us,\tfast: %lld us,\tspeedup: %lf\n", d,
          total_time_slow, total_time_fast,
-         (float)total_time_slow / total_time_fast);
+         (double)total_time_slow / (double)total_time_fast);
   return;
 }
 
@@ -73,18 +73,18 @@ void test_div(const U32Div &div, bool large_n = false) {
     total_time_fast += duration_fast.count();
   }
 
-  printf("d: %u,\tslow: %lld us,\tfast: %lld us,\tspeedup: %f\n", d,
+  printf("d: %u,\tslow: %lld us,\tfast: %lld us,\tspeedup: %lf\n", d,
          total_time_slow, total_time_fast,
-         (float)total_time_slow / total_time_fast);
+         (double)total_time_slow / (double)total_time_fast);
   return;
 }
 
 int main() {
-  srand(time(nullptr));
+  srand((unsigned)time(nullptr));
 
   puts("DivBounded, d = rand() + 1");
   for (int i = 0; i < 10; i++) {
-    uint32_t d = rand() + 1;
+    uint32_t d = rand() + 1U;
 
     U32Div div(d);
     test_div_bounded(div);
@@ -92,21 +92,21 @@ int main() {
 
   puts("\nDivBounded, d = 2^31");
   {
-    uint32_t d = (1 << 31);
+    uint32_t d = (1U << 31);
     U32Div div(d);
     test_div_bounded(div);
   }
 
   puts("\nThis is intended to fail for DivBounded due to d > 2^31");
   {
-    uint32_t d = (1 << 31) + 1;
+    uint32_t d = (1U << 31) + 1U;
     U32Div div(d);
     test_div_bounded(div);
   }
 
   puts("\nThis is highly probable to fail for DivBounded due to n >= 2^31");
   {
-    uint32_t d = rand() + 1;
+    uint32_t d = rand() + 1U;
     U32Div div(d);
     test_div_bounded(div, true);
   }
