@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <ctime>
 
-#define TEST_COUNT 1000000
+#define TEST_COUNT 10000000
 
 void test_div_bounded(const U32Div &div, bool large_n = false) {
   uint32_t d = div.GetD();
