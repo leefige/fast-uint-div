@@ -43,3 +43,4 @@ build/
 *.ptx
 *.cubin
 *.fatbin
+*.exp
