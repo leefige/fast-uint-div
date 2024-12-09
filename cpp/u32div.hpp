@@ -73,8 +73,9 @@ private:
    * @return uint32_t
    */
   static inline uint32_t umulhi(uint32_t a, uint32_t b) {
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(__x86_64__) || defined(__i386__)
     // x86_84 BMI2 expansion provides mulx for faster umulhi.
+    // GCC and clang only.
     uint32_t hi;
     __asm__("mulxl %2, %%eax, %%eax;" : "=a"(hi) : "d"(b), "rm"(a));
     return hi;

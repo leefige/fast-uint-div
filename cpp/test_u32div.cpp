@@ -10,8 +10,8 @@
 
 void test_div_bounded(const U32Div &div, bool large_n = false) {
   uint32_t d = div.GetD();
-  int64_t total_time_slow = 0;
-  int64_t total_time_fast = 0;
+  long long total_time_slow = 0;
+  long long total_time_fast = 0;
 
   for (int i = 0; i < TEST_COUNT; ++i) {
     uint32_t n = large_n ? UINT32_MAX - rand() : rand();
@@ -46,8 +46,8 @@ void test_div_bounded(const U32Div &div, bool large_n = false) {
 
 void test_div(const U32Div &div, bool large_n = false) {
   uint32_t d = div.GetD();
-  int64_t total_time_slow = 0;
-  int64_t total_time_fast = 0;
+  long long total_time_slow = 0;
+  long long total_time_fast = 0;
 
   for (int i = 0; i < TEST_COUNT; ++i) {
     uint32_t n = large_n ? UINT32_MAX - rand() : rand();
