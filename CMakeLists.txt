@@ -11,7 +11,7 @@ if(MSVC)
     add_compile_options(/W4)
 else()
     set(CMAKE_CXX_FLAGS_DEBUG "-g -O0")
-    set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3")
     add_compile_options(-Wall -Wextra -MMD)
 endif()
 
