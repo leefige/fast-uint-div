@@ -4,6 +4,114 @@
 
 ### C++
 
+#### Intel Core
+
+CPU: Intel(R) Core(TM) i7-12700K CPU @ 3.60GHz
+
+OS: Windows 11 23H2
+
+Compiler: MSVC 19.41.34123
+
+```plain
+DivBounded, d = rand() + 1
+d: 17554,       slow: 2888 us,  fast: 2563 us,  speedup: 1.126805
+d: 30065,       slow: 2887 us,  fast: 2500 us,  speedup: 1.154800
+d: 18564,       slow: 2502 us,  fast: 3326 us,  speedup: 0.752255
+d: 16779,       slow: 3154 us,  fast: 2300 us,  speedup: 1.371304
+d: 15830,       slow: 2254 us,  fast: 2023 us,  speedup: 1.114187
+d: 24707,       slow: 2293 us,  fast: 2506 us,  speedup: 0.915004
+d: 12493,       slow: 2788 us,  fast: 2943 us,  speedup: 0.947333
+d: 25092,       slow: 2776 us,  fast: 2745 us,  speedup: 1.011293
+d: 12026,       slow: 2250 us,  fast: 2521 us,  speedup: 0.892503
+d: 22961,       slow: 2850 us,  fast: 2123 us,  speedup: 1.342440
+
+DivBounded, d = 2^31
+d: 2147483648,  slow: 2631 us,  fast: 2727 us,  speedup: 0.964796
+
+This is intended to fail for DivBounded due to d > 2^31
+Error: 29648 / 2147483649 = 0, DivBounded returns: 59295
+
+This is highly probable to fail for DivBounded due to n >= 2^31
+Error: 4294939206 / 15387 = 279127, DivBounded returns: 16983
+
+Div, d = UINT32_MAX - rand()
+d: 4294935273,  slow: 3216 us,  fast: 2940 us,  speedup: 1.093878
+d: 4294948086,  slow: 2419 us,  fast: 3456 us,  speedup: 0.699942
+d: 4294955517,  slow: 2592 us,  fast: 3375 us,  speedup: 0.768000
+d: 4294935807,  slow: 2340 us,  fast: 2463 us,  speedup: 0.950061
+d: 4294957770,  slow: 2448 us,  fast: 2684 us,  speedup: 0.912072
+d: 4294966715,  slow: 3004 us,  fast: 2562 us,  speedup: 1.172521
+d: 4294938026,  slow: 2745 us,  fast: 2486 us,  speedup: 1.104183
+d: 4294941306,  slow: 3706 us,  fast: 3260 us,  speedup: 1.136810
+d: 4294951306,  slow: 3033 us,  fast: 3023 us,  speedup: 1.003308
+d: 4294963678,  slow: 2514 us,  fast: 2574 us,  speedup: 0.976690
+
+Div, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()
+d: 4294966853,  slow: 3017 us,  fast: 2844 us,  speedup: 1.060830
+d: 4294946569,  slow: 2783 us,  fast: 2859 us,  speedup: 0.973417
+d: 4294936680,  slow: 2245 us,  fast: 2215 us,  speedup: 1.013544
+d: 4294936715,  slow: 3415 us,  fast: 2899 us,  speedup: 1.177992
+d: 4294946199,  slow: 2730 us,  fast: 3265 us,  speedup: 0.836141
+d: 4294952828,  slow: 2785 us,  fast: 2569 us,  speedup: 1.084079
+d: 4294961794,  slow: 2456 us,  fast: 3050 us,  speedup: 0.805246
+d: 4294943698,  slow: 2692 us,  fast: 2827 us,  speedup: 0.952246
+d: 4294961972,  slow: 2573 us,  fast: 2401 us,  speedup: 1.071637
+d: 4294935487,  slow: 2447 us,  fast: 2253 us,  speedup: 1.086107
+```
+
+CPU: Intel(R) Core(TM) i7-12700K CPU @ 3.60GHz
+
+OS: Ubuntu 22.04.3 LTS (WSL2)
+
+Compiler: GCC 11.4.0
+
+```plain
+DivBounded, d = rand() + 1
+d: 527384375,   slow: 4180 us,  fast: 2428 us,  speedup: 1.721582
+d: 792346163,   slow: 3928 us,  fast: 2961 us,  speedup: 1.326579
+d: 713791299,   slow: 2767 us,  fast: 2720 us,  speedup: 1.017279
+d: 478857821,   slow: 3055 us,  fast: 3146 us,  speedup: 0.971074
+d: 755374755,   slow: 3647 us,  fast: 5932 us,  speedup: 0.614801
+d: 829138282,   slow: 1739 us,  fast: 1713 us,  speedup: 1.015178
+d: 515927610,   slow: 3139 us,  fast: 2127 us,  speedup: 1.475787
+d: 1467254302,  slow: 2268 us,  fast: 2514 us,  speedup: 0.902148
+d: 439758072,   slow: 1938 us,  fast: 2633 us,  speedup: 0.736043
+d: 113376739,   slow: 3930 us,  fast: 2290 us,  speedup: 1.716157
+
+DivBounded, d = 2^31
+d: 2147483648,  slow: 3113 us,  fast: 3016 us,  speedup: 1.032162
+
+This is intended to fail for DivBounded due to d > 2^31
+Error: 1128214007 / 2147483649 = 0, DivBounded returns: 2256428012
+
+This is highly probable to fail for DivBounded due to n >= 2^31
+Error: 3816214986 / 910300487 = 4, DivBounded returns: 0
+
+Div, d = UINT32_MAX - rand()
+d: 2792170072,  slow: 2763 us,  fast: 3165 us,  speedup: 0.872986
+d: 3309288323,  slow: 3375 us,  fast: 2894 us,  speedup: 1.166206
+d: 3633997112,  slow: 2117 us,  fast: 2446 us,  speedup: 0.865495
+d: 3741498301,  slow: 2518 us,  fast: 2762 us,  speedup: 0.911658
+d: 3194800613,  slow: 2340 us,  fast: 2021 us,  speedup: 1.157843
+d: 3851791869,  slow: 2836 us,  fast: 3571 us,  speedup: 0.794175
+d: 3155347687,  slow: 3197 us,  fast: 1985 us,  speedup: 1.610579
+d: 2665679419,  slow: 3739 us,  fast: 3072 us,  speedup: 1.217122
+d: 3444900026,  slow: 2881 us,  fast: 2275 us,  speedup: 1.266374
+d: 2523168788,  slow: 2737 us,  fast: 2763 us,  speedup: 0.990590
+
+Div, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()
+d: 3965318728,  slow: 2023 us,  fast: 2322 us,  speedup: 0.871232
+d: 3395636836,  slow: 4053 us,  fast: 3248 us,  speedup: 1.247845
+d: 3135780058,  slow: 3156 us,  fast: 2994 us,  speedup: 1.054108
+d: 3404177114,  slow: 2866 us,  fast: 2842 us,  speedup: 1.008445
+d: 4053165128,  slow: 3353 us,  fast: 2482 us,  speedup: 1.350927
+d: 2866901901,  slow: 2097 us,  fast: 2052 us,  speedup: 1.021930
+d: 2239909202,  slow: 2309 us,  fast: 1944 us,  speedup: 1.187757
+d: 2731924315,  slow: 2719 us,  fast: 1887 us,  speedup: 1.440911
+d: 3877218857,  slow: 3579 us,  fast: 3385 us,  speedup: 1.057312
+d: 3631592684,  slow: 3052 us,  fast: 3298 us,  speedup: 0.925409
+```
+
 #### Intel Xeon
 
 CPU: Intel(R) Xeon(R) Platinum 8352Y CPU @ 2.20GHz
