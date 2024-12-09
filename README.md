@@ -1,8 +1,49 @@
 # Fast Unsigned Integer Divsion by Constants
 
-## Experiments
+## Build and run
+
+### Requirements
+
+- CMake version 3.21 or higher
+- C++ compiler with C++17 support
+- For CUDA: CUDA 12.0 or higher
+- For Python: Python 3.10 or higher
 
 ### C++
+
+#### Unix-like systems
+
+Build:
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -v
+```
+
+Run:
+
+```sh
+build/cpp/uint-div-cpp
+```
+
+#### Windows with PowerShell
+
+Build:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release -v
+```
+
+Run:
+
+```powershell
+.\build\cpp\Release\uint-div-cpp.exe
+```
+
+## Experiments
+
+### C++ results
 
 #### Intel Core
 
