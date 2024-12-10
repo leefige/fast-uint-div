@@ -103,7 +103,7 @@ void test_impl(const U32Div &div, bool large_n, const char *name, Func &&func) {
   // fast
   auto start_fast = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < TEST_COUNT; ++i) {
-    out_fast[i] = std::forward<Func>(func)(dividends[i], div);
+    out_fast[i] = func(dividends[i], div);
   }
   auto end_fast = std::chrono::high_resolution_clock::now();
   auto duration_fast = std::chrono::duration_cast<std::chrono::microseconds>(

@@ -15,6 +15,8 @@
 static constexpr int HOST_THREAD_COUNT = 16;
 static constexpr int CTA_SIZE = 256;
 static constexpr int TEST_COUNT = 1 << 24;
+static_assert(TEST_COUNT % HOST_THREAD_COUNT == 0,
+              "requires TEST_COUNT % HOST_THREAD_COUNT == 0");
 
 #define CHECK_CUDA(expr)                                                       \
   do {                                                                         \
@@ -115,12 +117,10 @@ __global__ void __launch_bounds__(BLOCK, 1)
 }
 
 class TestBase {
-  static_assert(TEST_COUNT % HOST_THREAD_COUNT == 0,
-                "requires TEST_COUNT % HOST_THREAD_COUNT == 0");
 
 protected:
   virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
-                             const U32Div &div) = 0;
+                             const U32Div &div, cudaStream_t stream) = 0;
 
   static constexpr int ELEM_PER_THREAD = TEST_COUNT / HOST_THREAD_COUNT;
   static constexpr int CTA_COUNT =
@@ -138,14 +138,11 @@ public:
   void Run() {
     prelude();
 
-    CHECK_CUDA(cudaMemcpy(n_d, n_h.data(), n_h.size() * sizeof(uint32_t),
-                          cudaMemcpyHostToDevice));
-
     /* run reference */
     if (!time_it(total_time_slow, ref_start, ref_stop, ref_h, ref_d,
                  "reference", [&] {
                    kernel_reference<CTA_SIZE>
-                       <<<CTA_COUNT, CTA_SIZE>>>(ref_d, n_d, div);
+                       <<<CTA_COUNT, CTA_SIZE, 0, stream>>>(ref_d, n_d, div);
                  })) {
       printf("[Error] reference kernel wrong answer\n");
       return;
@@ -153,15 +150,15 @@ public:
 
     /* run target */
     if (!time_it(total_time_fast, target_start, target_stop, target_h, target_d,
-                 "target", [&] { launch_kernel(target_d, n_d, div); })) {
+                 "target",
+                 [&] { launch_kernel(target_d, n_d, div, stream); })) {
       return;
     }
 
     total_time_slow *= 1000;
     total_time_fast *= 1000;
-    printf("d: %u,\treference: %.2f us,\ttarget: %.2f us,\tspeedup: %f\n",
-           div.GetD(), total_time_slow, total_time_fast,
-           total_time_slow / total_time_fast);
+    printf("d: %u,\treference: %.2f us,\ttarget: %.2f us\n", div.GetD(),
+           total_time_slow, total_time_fast);
     return;
   }
 
@@ -187,10 +184,12 @@ private:
     CHECK_CUDA(cudaEventCreate(&ref_stop));
     CHECK_CUDA(cudaEventCreate(&target_start));
     CHECK_CUDA(cudaEventCreate(&target_stop));
+    CHECK_CUDA(cudaStreamCreate(&stream));
     return;
   }
 
   void cleanup() {
+    CHECK_CUDA(cudaStreamDestroy(stream));
     CHECK_CUDA(cudaEventDestroy(target_start));
     CHECK_CUDA(cudaEventDestroy(target_stop));
     CHECK_CUDA(cudaEventDestroy(ref_start));
@@ -218,6 +217,10 @@ private:
       }
     });
 
+    /* copy to device */
+    CHECK_CUDA(cudaMemcpyAsync(n_d, n_h.data(), n_h.size() * sizeof(uint32_t),
+                               cudaMemcpyHostToDevice, stream));
+
     /* run host */
     host_threading([&](int i) {
       for (int j = 0; j < ELEM_PER_THREAD; ++j) {
@@ -236,9 +239,9 @@ private:
     func();
     CHECK_KERNEL();
     // run
-    CHECK_CUDA(cudaEventRecord(start));
+    CHECK_CUDA(cudaEventRecord(start, stream));
     func();
-    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventRecord(stop, stream));
     CHECK_CUDA(cudaEventSynchronize(stop));
     CHECK_CUDA(cudaEventElapsedTime(&duration, start, stop));
     CHECK_CUDA(cudaMemcpy(data_host.data(), data_device,
@@ -252,8 +255,8 @@ private:
         int idx = i * ELEM_PER_THREAD + j;
         if (out_h[idx] != data_host[idx]) {
           char buf[512];
-          sprintf(buf, "Error: %u / %u = %u, %s returns: %u", n_h[idx],
-                  div.GetD(), out_h[idx], name, data_host[idx]);
+          sprintf_s(buf, sizeof(buf), "Error: %u / %u = %u, %s returns: %u",
+                    n_h[idx], div.GetD(), out_h[idx], name, data_host[idx]);
           errors[i] = buf;
           passed[i] = false;
           break;
@@ -279,6 +282,7 @@ private:
   cudaEvent_t ref_stop;
   cudaEvent_t target_start;
   cudaEvent_t target_stop;
+  cudaStream_t stream;
 
   std::vector<std::thread> thds;
   std::vector<uint32_t> n_h;
@@ -299,8 +303,9 @@ public:
 
 protected:
   virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
-                             const U32Div &div) override {
-    kernel_div<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(out, dividends, div);
+                             const U32Div &div, cudaStream_t stream) override {
+    kernel_div<CTA_SIZE>
+        <<<CTA_COUNT, CTA_SIZE, 0, stream>>>(out, dividends, div);
     return;
   }
 };
@@ -312,13 +317,16 @@ public:
 
 protected:
   virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
-                             const U32Div &div) override {
-    kernel_div_bounded<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(out, dividends, div);
+                             const U32Div &div, cudaStream_t stream) override {
+    kernel_div_bounded<CTA_SIZE>
+        <<<CTA_COUNT, CTA_SIZE, 0, stream>>>(out, dividends, div);
     return;
   }
 };
 
 int main() {
+  puts("This is a test for correctness, NOT a benchmark.\n");
+
   srand((unsigned)time(nullptr));
 
   puts("DivBounded, d = rand() + 1");
