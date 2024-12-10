@@ -255,8 +255,8 @@ private:
         int idx = i * ELEM_PER_THREAD + j;
         if (out_h[idx] != data_host[idx]) {
           char buf[512];
-          sprintf_s(buf, sizeof(buf), "Error: %u / %u = %u, %s returns: %u",
-                    n_h[idx], div.GetD(), out_h[idx], name, data_host[idx]);
+          snprintf(buf, sizeof(buf), "Error: %u / %u = %u, %s returns: %u",
+                   n_h[idx], div.GetD(), out_h[idx], name, data_host[idx]);
           errors[i] = buf;
           passed[i] = false;
           break;

@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <memory>
 #include <random>
 #include <string>
 #include <thread>
@@ -45,8 +46,8 @@ bool check(std::vector<std::thread> &thds, const std::vector<uint32_t> &ref,
       int idx = i * ELEM_PER_THREAD + j;
       if (ref[idx] != target[idx]) {
         char buf[512];
-        sprintf_s(buf, sizeof(buf), "Error: %u / %u = %u, %s returns: %u",
-                  dividends[idx], d, ref[idx], name, target[idx]);
+        snprintf(buf, sizeof(buf), "Error: %u / %u = %u, %s returns: %u",
+                 dividends[idx], d, ref[idx], name, target[idx]);
         errors[i] = buf;
         passed[i] = false;
         break;
