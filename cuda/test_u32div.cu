@@ -34,16 +34,38 @@ static constexpr int HOST_THREAD_COUNT = 16;
 static constexpr int CTA_SIZE = 256;
 static constexpr int TEST_COUNT = 1 << 24;
 
+namespace impl {
+
 template <int N, typename T> struct alignas(sizeof(uint4)) Vec {
   T data[N];
 };
 
-// one thread computes all elements
-template <int BLOCK>
-__global__ void __launch_bounds__(BLOCK, 1)
-    kernel(uint32_t *out, const uint32_t *dividends, const U32Div div) {
-  const uint32_t d = div.GetD();
+struct DivideRef {
+  __device__ __forceinline__ uint32_t operator()(uint32_t n,
+                                                 const U32Div &div) const {
+    return n / div.GetD();
+  }
+};
 
+struct DivideBounded {
+  __device__ __forceinline__ uint32_t operator()(uint32_t n,
+                                                 const U32Div &div) const {
+    return div.DivBounded(n);
+  }
+};
+
+struct Divide {
+  __device__ __forceinline__ uint32_t operator()(uint32_t n,
+                                                 const U32Div &div) const {
+    return div.Div(n);
+  }
+};
+
+// one thread computes all elements
+template <int BLOCK, typename Func>
+__device__ __forceinline__ void kernel_impl(uint32_t *out,
+                                            const uint32_t *dividends,
+                                            const U32Div &div, Func &&func) {
   constexpr int UNROLL = 16 / sizeof(uint32_t);
   using VecT = Vec<UNROLL, uint32_t>;
   static_assert(sizeof(VecT) == sizeof(uint4),
@@ -59,7 +81,7 @@ __global__ void __launch_bounds__(BLOCK, 1)
   VecT v_out;
 #pragma unroll
   for (int k = 0; k < UNROLL; ++k) {
-    v_out.data[k] = v_in.data[k] / d;
+    v_out.data[k] = func(v_in.data[k], div);
   }
 
   VecT *out_ptr =
@@ -68,108 +90,206 @@ __global__ void __launch_bounds__(BLOCK, 1)
   return;
 }
 
-template <typename Func>
-void host_threading(std::vector<std::thread> &thds, Func &&func) {
-  if (thds.size() < HOST_THREAD_COUNT) {
-    thds.resize(HOST_THREAD_COUNT);
-  }
-  for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
-    thds[i] = std::thread(std::forward<Func>(func), i);
-  }
-  for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
-    thds[i].join();
-  }
-  return;
+} // namespace impl
+
+template <int BLOCK>
+__global__ void __launch_bounds__(BLOCK, 1)
+    kernel_reference(uint32_t *out, const uint32_t *dividends,
+                     const U32Div div) {
+  impl::kernel_impl<BLOCK>(out, dividends, div, impl::DivideRef());
 }
 
-void test_body(const U32Div &div, bool large_n = false) {
-  uint32_t d = div.GetD();
+template <int BLOCK>
+__global__ void __launch_bounds__(BLOCK, 1)
+    kernel_div(uint32_t *out, const uint32_t *dividends, const U32Div div) {
+  impl::kernel_impl<BLOCK>(out, dividends, div, impl::Divide());
+}
 
-  float total_time_slow = 1;
-  float total_time_fast = 1;
+template <int BLOCK>
+__global__ void __launch_bounds__(BLOCK, 1)
+    kernel_div_bounded(uint32_t *out, const uint32_t *dividends,
+                       const U32Div div) {
+  impl::kernel_impl<BLOCK>(out, dividends, div, impl::DivideBounded());
+}
 
-  std::vector<uint32_t> n_h(TEST_COUNT);
-  std::vector<std::thread> thds(HOST_THREAD_COUNT);
-
-  /* Step 1: generate dividends */
+class TestBase {
   static_assert(TEST_COUNT % HOST_THREAD_COUNT == 0,
                 "requires TEST_COUNT % HOST_THREAD_COUNT == 0");
-  constexpr int ELEM_PER_THREAD = TEST_COUNT / HOST_THREAD_COUNT;
-  host_threading(thds, [&](int i) {
-    using Dist = std::uniform_int_distribution<uint32_t>;
-    std::default_random_engine rng(i);
-    std::shared_ptr<Dist> dist;
-    if (large_n) {
-      dist = std::make_shared<Dist>(0, UINT32_MAX);
-    } else {
-      dist = std::make_shared<Dist>(0, INT32_MAX);
-    }
 
-    for (int j = 0; j < ELEM_PER_THREAD; ++j) {
-      n_h[i * ELEM_PER_THREAD + j] = (*dist)(rng);
-    }
-  });
+protected:
+  virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
+                             const U32Div &div) = 0;
 
-  /* Step 2: run host */
-  std::vector<uint32_t> out_h(TEST_COUNT);
-  host_threading(thds, [&](int i) {
-    for (int j = 0; j < ELEM_PER_THREAD; ++j) {
-      out_h[i * ELEM_PER_THREAD + j] = n_h[i * ELEM_PER_THREAD + j] / d;
-    }
-  });
-
-  /* Step 3: copy dividends to device */
-  uint32_t *n_d;
-  CHECK_CUDA(cudaMalloc(&n_d, n_h.size() * sizeof(uint32_t)));
-  CHECK_CUDA(cudaMemcpy(n_d, n_h.data(), n_h.size() * sizeof(uint32_t),
-                        cudaMemcpyHostToDevice));
-
-  /* Step 4: run reference */
-  std::vector<uint32_t> ref_h(TEST_COUNT);
-  uint32_t *ref_d;
-  CHECK_CUDA(cudaMalloc(&ref_d, ref_h.size() * sizeof(uint32_t)));
-  cudaEvent_t ref_start, ref_stop;
-  CHECK_CUDA(cudaEventCreate(&ref_start));
-  CHECK_CUDA(cudaEventCreate(&ref_stop));
-
+  static constexpr int ELEM_PER_THREAD = TEST_COUNT / HOST_THREAD_COUNT;
   static constexpr int CTA_COUNT =
       TEST_COUNT / (CTA_SIZE * 16 / sizeof(uint32_t));
-  // warmup
-  kernel<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(ref_d, n_d, div);
-  CHECK_KERNEL();
-  // run
-  CHECK_CUDA(cudaEventRecord(ref_start));
-  kernel<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(ref_d, n_d, div);
-  CHECK_KERNEL();
-  CHECK_CUDA(cudaEventRecord(ref_stop));
-  CHECK_CUDA(cudaEventSynchronize(ref_stop));
-  CHECK_CUDA(cudaEventElapsedTime(&total_time_slow, ref_start, ref_stop));
-  CHECK_CUDA(cudaEventDestroy(ref_start));
-  CHECK_CUDA(cudaEventDestroy(ref_stop));
-  // check
-  CHECK_CUDA(cudaMemcpy(ref_h.data(), ref_d, ref_h.size() * sizeof(uint32_t),
-                        cudaMemcpyDeviceToHost));
-  CHECK_CUDA(cudaFree(ref_d));
-  host_threading(thds, [&](int i) {
-    for (int j = 0; j < ELEM_PER_THREAD; ++j) {
-      int idx = i * ELEM_PER_THREAD + j;
-      if (out_h[idx] != ref_h[idx]) {
-        printf("Error: %u / %u = %u, Ref returns: %u\n", n_h[idx], d,
-               out_h[idx], ref_h[idx]);
-        break;
-      }
+
+public:
+  explicit TestBase(uint32_t d_, bool large_n_)
+      : thds(HOST_THREAD_COUNT), n_h(TEST_COUNT), out_h(TEST_COUNT),
+        ref_h(TEST_COUNT), target_h(TEST_COUNT), div(d_), total_time_slow(0),
+        total_time_fast(0), large_n(large_n_) {
+    setup();
+  }
+  virtual ~TestBase() { cleanup(); }
+
+  void Run() {
+    prelude();
+
+    CHECK_CUDA(cudaMemcpy(n_d, n_h.data(), n_h.size() * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice));
+
+    /* run reference */
+    time_it(
+        total_time_slow, ref_start, ref_stop, ref_h, ref_d, "reference", [&] {
+          kernel_reference<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(ref_d, n_d, div);
+        });
+
+    /* run target */
+    time_it(total_time_fast, target_start, target_stop, target_h, target_d,
+            "target", [&] { launch_kernel(ref_d, n_d, div); });
+
+    total_time_slow *= 1000;
+    total_time_fast *= 1000;
+    printf("d: %u,\treference: %.2f us,\ttarget: %.2f us,\tspeedup: %f\n",
+           div.GetD(), total_time_slow, total_time_fast,
+           total_time_slow / total_time_fast);
+    return;
+  }
+
+private:
+  template <typename Func> void host_threading(Func &&func) {
+    if (thds.size() < HOST_THREAD_COUNT) {
+      thds.resize(HOST_THREAD_COUNT);
     }
-  });
+    for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
+      thds[i] = std::thread(std::forward<Func>(func), i);
+    }
+    for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
+      thds[i].join();
+    }
+    return;
+  }
 
-  // free
-  CHECK_CUDA(cudaFree(n_d));
+  void setup() {
+    CHECK_CUDA(cudaMalloc(&n_d, n_h.size() * sizeof(uint32_t)));
+    CHECK_CUDA(cudaMalloc(&ref_d, ref_h.size() * sizeof(uint32_t)));
+    CHECK_CUDA(cudaMalloc(&target_d, target_h.size() * sizeof(uint32_t)));
+    CHECK_CUDA(cudaEventCreate(&ref_start));
+    CHECK_CUDA(cudaEventCreate(&ref_stop));
+    CHECK_CUDA(cudaEventCreate(&target_start));
+    CHECK_CUDA(cudaEventCreate(&target_stop));
+  }
 
-  total_time_slow *= 1000;
-  total_time_fast *= 1000;
-  printf("d: %u,\tslow: %.2f us,\tfast: %.2f us,\tspeedup: %f\n", d,
-         total_time_slow, total_time_fast, total_time_slow / total_time_fast);
-  return;
-}
+  void cleanup() {
+    CHECK_CUDA(cudaEventDestroy(target_start));
+    CHECK_CUDA(cudaEventDestroy(target_stop));
+    CHECK_CUDA(cudaEventDestroy(ref_start));
+    CHECK_CUDA(cudaEventDestroy(ref_stop));
+    CHECK_CUDA(cudaFree(target_d));
+    CHECK_CUDA(cudaFree(ref_d));
+    CHECK_CUDA(cudaFree(n_d));
+  }
+
+  void prelude() {
+    /* generate dividends */
+    host_threading([&](int i) {
+      using Dist = std::uniform_int_distribution<uint32_t>;
+      std::default_random_engine rng(i);
+      std::shared_ptr<Dist> dist;
+      if (large_n) {
+        dist = std::make_shared<Dist>(0, UINT32_MAX);
+      } else {
+        dist = std::make_shared<Dist>(0, INT32_MAX);
+      }
+
+      for (int j = 0; j < ELEM_PER_THREAD; ++j) {
+        n_h[i * ELEM_PER_THREAD + j] = (*dist)(rng);
+      }
+    });
+
+    /* run host */
+    host_threading([&](int i) {
+      for (int j = 0; j < ELEM_PER_THREAD; ++j) {
+        out_h[i * ELEM_PER_THREAD + j] =
+            n_h[i * ELEM_PER_THREAD + j] / div.GetD();
+      }
+    });
+  }
+
+  template <typename Func>
+  void time_it(float &duration, cudaEvent_t start, cudaEvent_t stop,
+               std::vector<uint32_t> &data_host, uint32_t *data_device,
+               const char *name, Func &&func) {
+    // warmup
+    func();
+    CHECK_KERNEL();
+    // run
+    CHECK_CUDA(cudaEventRecord(start));
+    func();
+    CHECK_CUDA(cudaEventRecord(stop));
+    CHECK_CUDA(cudaEventSynchronize(stop));
+    CHECK_CUDA(cudaEventElapsedTime(&duration, start, stop));
+    CHECK_CUDA(cudaMemcpy(data_host.data(), data_device,
+                          data_host.size() * sizeof(uint32_t),
+                          cudaMemcpyDeviceToHost));
+    // check
+    host_threading([&](int i) {
+      for (int j = 0; j < ELEM_PER_THREAD; ++j) {
+        int idx = i * ELEM_PER_THREAD + j;
+        if (out_h[idx] != data_host[idx]) {
+          printf("Error: %u / %u = %u, %s returns: %u\n", n_h[idx], div.GetD(),
+                 out_h[idx], name, data_host[idx]);
+          break;
+        }
+      }
+    });
+  }
+
+  uint32_t *n_d;
+  uint32_t *ref_d;
+  uint32_t *target_d;
+
+  cudaEvent_t ref_start;
+  cudaEvent_t ref_stop;
+  cudaEvent_t target_start;
+  cudaEvent_t target_stop;
+
+  std::vector<std::thread> thds;
+  std::vector<uint32_t> n_h;
+  std::vector<uint32_t> out_h;
+  std::vector<uint32_t> ref_h;
+  std::vector<uint32_t> target_h;
+
+  U32Div div;
+  float total_time_slow;
+  float total_time_fast;
+  bool large_n;
+};
+
+class TestDiv : public TestBase {
+public:
+  explicit TestDiv(uint32_t d_, bool large_n_ = false)
+      : TestBase(d_, large_n_) {}
+
+protected:
+  virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
+                             const U32Div &div) override {
+    kernel_div<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(out, dividends, div);
+  }
+};
+
+class TestDivBounded : public TestBase {
+public:
+  explicit TestDivBounded(uint32_t d_, bool large_n_ = false)
+      : TestBase(d_, large_n_) {}
+
+protected:
+  virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
+                             const U32Div &div) override {
+    kernel_div_bounded<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(out, dividends, div);
+  }
+};
 
 int main() {
   srand((unsigned)time(nullptr));
@@ -178,8 +298,8 @@ int main() {
   for (int i = 0; i < 5; i++) {
     uint32_t d = rand() + 1U;
 
-    U32Div div(d);
-    test_body(div);
+    TestDivBounded test(d, false);
+    test.Run();
   }
 
   return 0;
