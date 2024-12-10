@@ -1,14 +1,20 @@
 #include "u32div.cuh"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <memory>
 #include <random>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
+
+static constexpr int HOST_THREAD_COUNT = 16;
+static constexpr int CTA_SIZE = 256;
+static constexpr int TEST_COUNT = 1 << 24;
 
 #define CHECK_CUDA(expr)                                                       \
   do {                                                                         \
@@ -29,10 +35,6 @@
       exit(1);                                                                 \
     }                                                                          \
   } while (0)
-
-static constexpr int HOST_THREAD_COUNT = 16;
-static constexpr int CTA_SIZE = 256;
-static constexpr int TEST_COUNT = 1 << 24;
 
 namespace impl {
 
@@ -140,14 +142,20 @@ public:
                           cudaMemcpyHostToDevice));
 
     /* run reference */
-    time_it(
-        total_time_slow, ref_start, ref_stop, ref_h, ref_d, "reference", [&] {
-          kernel_reference<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(ref_d, n_d, div);
-        });
+    if (!time_it(total_time_slow, ref_start, ref_stop, ref_h, ref_d,
+                 "reference", [&] {
+                   kernel_reference<CTA_SIZE>
+                       <<<CTA_COUNT, CTA_SIZE>>>(ref_d, n_d, div);
+                 })) {
+      printf("[Error] reference kernel wrong answer\n");
+      return;
+    }
 
     /* run target */
-    time_it(total_time_fast, target_start, target_stop, target_h, target_d,
-            "target", [&] { launch_kernel(ref_d, n_d, div); });
+    if (!time_it(total_time_fast, target_start, target_stop, target_h, target_d,
+                 "target", [&] { launch_kernel(target_d, n_d, div); })) {
+      return;
+    }
 
     total_time_slow *= 1000;
     total_time_fast *= 1000;
@@ -179,6 +187,7 @@ private:
     CHECK_CUDA(cudaEventCreate(&ref_stop));
     CHECK_CUDA(cudaEventCreate(&target_start));
     CHECK_CUDA(cudaEventCreate(&target_stop));
+    return;
   }
 
   void cleanup() {
@@ -189,6 +198,7 @@ private:
     CHECK_CUDA(cudaFree(target_d));
     CHECK_CUDA(cudaFree(ref_d));
     CHECK_CUDA(cudaFree(n_d));
+    return;
   }
 
   void prelude() {
@@ -215,10 +225,11 @@ private:
             n_h[i * ELEM_PER_THREAD + j] / div.GetD();
       }
     });
+    return;
   }
 
   template <typename Func>
-  void time_it(float &duration, cudaEvent_t start, cudaEvent_t stop,
+  bool time_it(float &duration, cudaEvent_t start, cudaEvent_t stop,
                std::vector<uint32_t> &data_host, uint32_t *data_device,
                const char *name, Func &&func) {
     // warmup
@@ -234,16 +245,30 @@ private:
                           data_host.size() * sizeof(uint32_t),
                           cudaMemcpyDeviceToHost));
     // check
+    std::vector<bool> passed(HOST_THREAD_COUNT, true);
+    std::vector<std::string> errors(HOST_THREAD_COUNT);
     host_threading([&](int i) {
       for (int j = 0; j < ELEM_PER_THREAD; ++j) {
         int idx = i * ELEM_PER_THREAD + j;
         if (out_h[idx] != data_host[idx]) {
-          printf("Error: %u / %u = %u, %s returns: %u\n", n_h[idx], div.GetD(),
-                 out_h[idx], name, data_host[idx]);
+          char buf[512];
+          sprintf(buf, "Error: %u / %u = %u, %s returns: %u", n_h[idx],
+                  div.GetD(), out_h[idx], name, data_host[idx]);
+          errors[i] = buf;
+          passed[i] = false;
           break;
         }
       }
     });
+    if (std::any_of(passed.begin(), passed.end(), [](bool x) { return !x; })) {
+      for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
+        if (!passed[i]) {
+          printf("%s\n", errors[i].c_str());
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   uint32_t *n_d;
@@ -276,6 +301,7 @@ protected:
   virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
                              const U32Div &div) override {
     kernel_div<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(out, dividends, div);
+    return;
   }
 };
 
@@ -288,6 +314,7 @@ protected:
   virtual void launch_kernel(uint32_t *out, const uint32_t *dividends,
                              const U32Div &div) override {
     kernel_div_bounded<CTA_SIZE><<<CTA_COUNT, CTA_SIZE>>>(out, dividends, div);
+    return;
   }
 };
 
@@ -297,8 +324,42 @@ int main() {
   puts("DivBounded, d = rand() + 1");
   for (int i = 0; i < 5; i++) {
     uint32_t d = rand() + 1U;
+    TestDivBounded test(d);
+    test.Run();
+  }
 
-    TestDivBounded test(d, false);
+  puts("\nDivBounded, d = 2^31");
+  {
+    uint32_t d = (1U << 31);
+    TestDivBounded test(d);
+    test.Run();
+  }
+
+  puts("\nDivBounded, d > 2^31");
+  {
+    uint32_t d = UINT32_MAX - rand();
+    TestDivBounded test(d);
+    test.Run();
+  }
+
+  puts("\nThis is highly probable to fail for DivBounded due to n >= 2^31");
+  {
+    uint32_t d = rand() + 1U;
+    TestDivBounded test(d, true);
+    test.Run();
+  }
+
+  puts("\nDiv, d = UINT32_MAX - rand()");
+  for (int i = 0; i < 10; i++) {
+    uint32_t d = UINT32_MAX - rand();
+    TestDiv test(d);
+    test.Run();
+  }
+
+  puts("\nDiv, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()");
+  for (int i = 0; i < 10; i++) {
+    uint32_t d = UINT32_MAX - rand();
+    TestDiv test(d, true);
     test.Run();
   }
 
