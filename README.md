@@ -194,7 +194,50 @@ OS: Ubuntu 22.04.2 LTS
 Compiler: GCC 11.3.0
 
 ```plain
+DivBounded, d = rand() + 1
+d: 1194173319,	slow: 45440 us,	fast: 19554 us,	speedup: 2.323821
+d: 1466172372,	slow: 36744 us,	fast: 18802 us,	speedup: 1.954260
+d: 326670292,	slow: 36020 us,	fast: 18347 us,	speedup: 1.963264
+d: 134546121,	slow: 40543 us,	fast: 19003 us,	speedup: 2.133505
+d: 1522997473,	slow: 30889 us,	fast: 16497 us,	speedup: 1.872401
+d: 1919922272,	slow: 34882 us,	fast: 18204 us,	speedup: 1.916172
+d: 236747362,	slow: 32104 us,	fast: 16051 us,	speedup: 2.000125
+d: 1914636498,	slow: 34839 us,	fast: 18156 us,	speedup: 1.918870
+d: 370689008,	slow: 35035 us,	fast: 18218 us,	speedup: 1.923098
+d: 1943806296,	slow: 40208 us,	fast: 18622 us,	speedup: 2.159167
 
+DivBounded, d = 2^31
+d: 2147483648,	slow: 41588 us,	fast: 18973 us,	speedup: 2.191957
+
+This is intended to fail for DivBounded due to d > 2^31
+Error: 282475248 / 2147483649 = 0, DivBounded returns: 564950495
+
+This is highly probable to fail for DivBounded due to n >= 2^31
+Error: 3262921810 / 726827746 = 4, DivBounded returns: 0
+
+Div, d = UINT32_MAX - rand()
+d: 3054236855,	slow: 50627 us,	fast: 22552 us,	speedup: 2.244901
+d: 3077386257,	slow: 36080 us,	fast: 22456 us,	speedup: 1.606698
+d: 4133505628,	slow: 31541 us,	fast: 19154 us,	speedup: 1.646706
+d: 2693242931,	slow: 32540 us,	fast: 19696 us,	speedup: 1.652112
+d: 4169759927,	slow: 34131 us,	fast: 21212 us,	speedup: 1.609042
+d: 2819937664,	slow: 34401 us,	fast: 22007 us,	speedup: 1.563184
+d: 3542466851,	slow: 35155 us,	fast: 21695 us,	speedup: 1.620419
+d: 4174289017,	slow: 35066 us,	fast: 21682 us,	speedup: 1.617286
+d: 2642061525,	slow: 36099 us,	fast: 22321 us,	speedup: 1.617266
+d: 3819173504,	slow: 31077 us,	fast: 19646 us,	speedup: 1.581849
+
+Div, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()
+d: 4256602993,	slow: 30579 us,	fast: 19171 us,	speedup: 1.595065
+d: 2280034797,	slow: 37692 us,	fast: 20424 us,	speedup: 1.845476
+d: 2486693976,	slow: 37029 us,	fast: 21143 us,	speedup: 1.751360
+d: 2244861190,	slow: 30920 us,	fast: 19197 us,	speedup: 1.610668
+d: 2524441561,	slow: 37060 us,	fast: 20538 us,	speedup: 1.804460
+d: 3284955087,	slow: 38140 us,	fast: 21367 us,	speedup: 1.784996
+d: 2685020394,	slow: 33747 us,	fast: 20915 us,	speedup: 1.613531
+d: 3671874172,	slow: 35838 us,	fast: 20545 us,	speedup: 1.744366
+d: 3741563917,	slow: 34857 us,	fast: 20607 us,	speedup: 1.691513
+d: 3307097346,	slow: 32660 us,	fast: 20298 us,	speedup: 1.609026
 ```
 
 #### Apple M3
@@ -206,7 +249,50 @@ OS: macOS 15.1.1
 Compiler: Apple clang 16.0.0
 
 ```plain
+DivBounded, d = rand() + 1
+d: 69097088,	slow: 10988 us,	fast: 2545 us,	speedup: 4.317485
+d: 1673571830,	slow: 8462 us,	fast: 1801 us,	speedup: 4.698501
+d: 2128405245,	slow: 8581 us,	fast: 1426 us,	speedup: 6.017532
+d: 1471827830,	slow: 8459 us,	fast: 1633 us,	speedup: 5.180037
+d: 146192211,	slow: 9369 us,	fast: 1630 us,	speedup: 5.747853
+d: 331181303,	slow: 8437 us,	fast: 1440 us,	speedup: 5.859028
+d: 2034013338,	slow: 9077 us,	fast: 1534 us,	speedup: 5.917210
+d: 2017462014,	slow: 8979 us,	fast: 1552 us,	speedup: 5.785438
+d: 864750009,	slow: 8472 us,	fast: 1437 us,	speedup: 5.895616
+d: 1831545208,	slow: 8609 us,	fast: 1420 us,	speedup: 6.062676
 
+DivBounded, d = 2^31
+d: 2147483648,	slow: 8681 us,	fast: 1423 us,	speedup: 6.100492
+
+This is intended to fail for DivBounded due to d > 2^31
+d: 2147483649,	slow: 8488 us,	fast: 1423 us,	speedup: 5.964863
+
+This is highly probable to fail for DivBounded due to n >= 2^31
+Error: 3163445217 / 749697952 = 4, DivBounded returns: 0
+
+Div, d = UINT32_MAX - rand()
+d: 3408061787,	slow: 8451 us,	fast: 1920 us,	speedup: 4.401562
+d: 3758088166,	slow: 8428 us,	fast: 1907 us,	speedup: 4.419507
+d: 2546247239,	slow: 8472 us,	fast: 1941 us,	speedup: 4.364760
+d: 4018178945,	slow: 8589 us,	fast: 1942 us,	speedup: 4.422760
+d: 3762748247,	slow: 8470 us,	fast: 1916 us,	speedup: 4.420668
+d: 3558817314,	slow: 8640 us,	fast: 1954 us,	speedup: 4.421699
+d: 3475526995,	slow: 8403 us,	fast: 1938 us,	speedup: 4.335913
+d: 3774473406,	slow: 8426 us,	fast: 1908 us,	speedup: 4.416143
+d: 3055069103,	slow: 8532 us,	fast: 1947 us,	speedup: 4.382126
+d: 2359881192,	slow: 8382 us,	fast: 1921 us,	speedup: 4.363352
+
+Div, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()
+d: 2795184342,	slow: 8401 us,	fast: 1907 us,	speedup: 4.405349
+d: 2458441063,	slow: 8416 us,	fast: 1909 us,	speedup: 4.408591
+d: 3581044402,	slow: 8475 us,	fast: 1911 us,	speedup: 4.434851
+d: 3384040433,	slow: 8421 us,	fast: 2010 us,	speedup: 4.189552
+d: 3758117124,	slow: 8540 us,	fast: 2184 us,	speedup: 3.910256
+d: 3032944345,	slow: 8420 us,	fast: 2062 us,	speedup: 4.083414
+d: 4171228064,	slow: 8519 us,	fast: 2331 us,	speedup: 3.654655
+d: 3373882174,	slow: 8367 us,	fast: 2355 us,	speedup: 3.552866
+d: 2679466224,	slow: 8334 us,	fast: 2386 us,	speedup: 3.492875
+d: 3204216019,	slow: 8543 us,	fast: 2330 us,	speedup: 3.666524
 ```
 
 ### CUDA results (not benchmark)
