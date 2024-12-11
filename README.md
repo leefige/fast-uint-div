@@ -417,3 +417,45 @@ d: 3703346868,  reference: 347.14 us,   target: 346.27 us
 d: 4259161815,  reference: 346.11 us,   target: 347.14 us
 d: 3981441505,  reference: 346.11 us,   target: 347.14 us
 ```
+
+### Python results
+
+Compute 2^14 (1 << 14) unsigned integer divisions and check the correctness.
+
+This is just a proof of concept, and one should never expect to accelerate division in interpreted language with this algorithm.
+
+"Reference" refers to a reference implementation with built-in integer division. "Target" refers to the ~~fast~~ division implementation.
+
+CPU: Intel(R) Core(TM) i7-12700K CPU @ 3.60GHz
+
+OS: Windows 11 23H2
+
+Python: 3.10.7
+
+```plain
+d <= 2**31, n < 2**31
+d: 2141932235,  reference: 783 us,      target: 3304 us
+d: 651779455,   reference: 703 us,      target: 3365 us
+d: 214010527,   reference: 740 us,      target: 3446 us
+
+d = 2**31, n < 2**31
+d: 2147483648,  reference: 566 us,      target: 2999 us
+
+d = 2**31 + 1, n < 2**31
+d: 2147483649,  reference: 574 us,      target: 3427 us
+
+d <= 2**31, n >= 2**31
+d: 489000381,   reference: 766 us,      target: 3269 us
+d: 1488398454,  reference: 1011 us,     target: 3562 us
+d: 903438726,   reference: 710 us,      target: 3254 us
+
+d >= 2**31, n < 2**31
+d: 2437972628,  reference: 559 us,      target: 3495 us
+d: 2620485219,  reference: 570 us,      target: 3438 us
+d: 4079159863,  reference: 579 us,      target: 3263 us
+
+d >= 2**31, n >= 2**31
+d: 3078107323,  reference: 864 us,      target: 3807 us
+d: 4173689700,  reference: 739 us,      target: 3291 us
+d: 3872453472,  reference: 701 us,      target: 3514 us
+```
