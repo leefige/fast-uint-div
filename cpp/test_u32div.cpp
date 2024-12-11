@@ -154,7 +154,12 @@ int main() {
     test_div_bounded(div);
   }
 
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) ||             \
+    defined(_M_IX86)
   puts("\nThis is intended to fail for DivBounded due to d > 2^31");
+#else
+  puts("\nDivBounded, d > 2^31");
+#endif
   {
     uint32_t d = (1U << 31) + 1U;
     U32Div div(d);

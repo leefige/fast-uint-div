@@ -77,6 +77,21 @@ Run:
 
 ### C++ benchmark
 
+A single thread sequentially computes 2^24 (1 << 24) unsigned integer divisions.
+The baseline ("slow") is the built-in integer division (`operator/`), which generally maps to the architecture-provided integer division instruction.
+The fast division ("fast") is implemented by either `DivBounded` or `Div`.
+
+Some conclusions:
+
+1. Intel Core i7 (x86_64) with MSVC: `DivBounded` achieves up to 2.4x speedup, `Div` achieves up to 1.9x speedup.
+2. Intel Core i7 (x86_64) with GCC: `DivBounded` achieves up to 2.7x speedup, `Div` achieves up to 1.9x speedup.
+3. Intel Xeon (x86_64): `DivBounded` achieves about 2x speedup, `Div` achieves 1.6~1.8x speedup.
+4. Apple M3 (AArch64): `DivBounded` achieves up to 6x speedup, `Div` achieves up to 4.4x speedup.
+5. x86 with GCC performs slightly better than with MSVC.
+6. Fast division far outperforms the built-in integer division on AArch64, and shows obvious speedup on all platforms.
+7. `DivBounded` is generally faster than `Div`.
+8. `DivBounded` does not support d > 2^31 on x86, while it does support d > 2^31 on AArch64
+
 #### Intel Core
 
 CPU: Intel(R) Core(TM) i7-12700K CPU @ 3.60GHz
@@ -295,7 +310,11 @@ d: 2679466224,	slow: 8334 us,	fast: 2386 us,	speedup: 3.492875
 d: 3204216019,	slow: 8543 us,	fast: 2330 us,	speedup: 3.666524
 ```
 
-### CUDA results (not benchmark)
+### CUDA results (NOT benchmark)
+
+Compute 2^24 (1 << 24) unsigned integer divisions and check the correctness.
+"Reference" refers to a reference implementation with built-in integer division.
+"Target" refers to the fast division implementation, either `DivBounded` or `Div`.
 
 #### NVIDIA Ampere
 

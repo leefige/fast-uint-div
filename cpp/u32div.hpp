@@ -40,11 +40,17 @@ public:
   uint32_t GetD() const { return _d; }
 
   /**
-   * @brief Compute n / d.
+   * @brief Compute n / d, for bounded n (and d for some architectures).
    *
-   * Requires n < 2^31, d <= 2^31.
+   * Requires n < 2^31.
    *
-   * @note There is a limit on d, because N-bit integer >> N is undefined.
+   * May require d <= 2^31, depending on architecture, for example:
+   *  (1) for x86 or x86_64, d <= 2^31;
+   *  (2) for Arm, d can be any positive 32-bit integer.
+   *
+   * @note The archtecture-dependent limitation on d is due to the definition of
+   * logical shift right intruction for (N-bit integer >> N). For x86, it is
+   * undefined. While for Arm, it is well-defined.
    *
    * @param n Dividend, n < 2^31.
    * @return uint32_t
