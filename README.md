@@ -316,6 +316,9 @@ Compute 2^24 (1 << 24) unsigned integer divisions and check the correctness.
 "Reference" refers to a reference implementation with built-in integer division.
 "Target" refers to the fast division implementation, either `DivBounded` or `Div`.
 
+The kernels are memory-bound, and the execution time includes both memory access and computation.
+So the results do NOT reflect the performance of the fast division, and CANNOT be used as a benchmark.
+
 #### NVIDIA Ampere
 
 GPU: NVIDIA RTX A4000 @ 2.10GHz
@@ -328,44 +331,34 @@ Compiler: MSVC 19.41.34123 + CUDA 12.4.131
 This is a test for correctness, NOT a benchmark.
 
 DivBounded, d = rand() + 1
-d: 13486,       reference: 346.98 us,   target: 347.14 us
-d: 4916,        reference: 347.14 us,   target: 346.11 us
-d: 1287,        reference: 348.16 us,   target: 346.11 us
-d: 9357,        reference: 347.14 us,   target: 348.16 us
-d: 20333,       reference: 347.14 us,   target: 347.14 us
+d: 21232,       reference: 346.11 us,   target: 347.14 us
+d: 20746,       reference: 348.16 us,   target: 348.16 us
+d: 26458,       reference: 347.14 us,   target: 347.14 us
+d: 14591,       reference: 347.14 us,   target: 346.11 us
+d: 29445,       reference: 345.09 us,   target: 347.14 us
 
 DivBounded, d = 2^31
-d: 2147483648,  reference: 348.16 us,   target: 347.14 us
+d: 2147483648,  reference: 345.09 us,   target: 346.11 us
 
 DivBounded, d > 2^31
-d: 4294952665,  reference: 346.11 us,   target: 346.11 us
+d: 4294954493,  reference: 345.09 us,   target: 347.14 us
 
 This is highly probable to fail for DivBounded due to n >= 2^31
-Error: 3626093760 / 26841 = 135095, target returns: 4023
+Error: 3626093760 / 12 = 302174480, target returns: 33739024
 
 Div, d = UINT32_MAX - rand()
-d: 4294946994,  reference: 346.11 us,   target: 348.16 us
-d: 4294949189,  reference: 346.11 us,   target: 346.11 us
-d: 4294935102,  reference: 346.11 us,   target: 348.16 us
-d: 4294940746,  reference: 346.11 us,   target: 347.14 us
-d: 4294965264,  reference: 345.09 us,   target: 347.14 us
-d: 4294956174,  reference: 346.11 us,   target: 346.11 us
-d: 4294960887,  reference: 345.09 us,   target: 348.16 us
-d: 4294944288,  reference: 347.14 us,   target: 347.14 us
-d: 4294966091,  reference: 346.11 us,   target: 348.16 us
-d: 4294943334,  reference: 347.14 us,   target: 346.11 us
+d: 4294951337,  reference: 347.14 us,   target: 347.14 us
+d: 4294939147,  reference: 347.14 us,   target: 348.03 us
+d: 4294953848,  reference: 346.11 us,   target: 347.14 us
+d: 4294942284,  reference: 349.22 us,   target: 348.16 us
+d: 4294962188,  reference: 347.14 us,   target: 346.05 us
 
 Div, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()
-d: 4294958478,  reference: 370.69 us,   target: 346.11 us
-d: 4294962618,  reference: 344.06 us,   target: 346.11 us
-d: 4294950685,  reference: 345.09 us,   target: 347.14 us
-d: 4294947025,  reference: 347.14 us,   target: 347.14 us
-d: 4294944616,  reference: 347.01 us,   target: 348.16 us
-d: 4294944925,  reference: 346.11 us,   target: 347.14 us
-d: 4294958567,  reference: 347.14 us,   target: 346.11 us
-d: 4294941661,  reference: 347.14 us,   target: 348.16 us
-d: 4294962893,  reference: 346.11 us,   target: 347.14 us
-d: 4294941852,  reference: 347.14 us,   target: 346.11 us
+d: 4294944099,  reference: 346.11 us,   target: 346.11 us
+d: 4294963621,  reference: 346.11 us,   target: 347.14 us
+d: 4294951904,  reference: 348.16 us,   target: 346.11 us
+d: 4294936770,  reference: 345.12 us,   target: 347.14 us
+d: 4294944177,  reference: 346.11 us,   target: 347.14 us
 ```
 
 GPU: NVIDIA RTX A4000 @ 2.10GHz
@@ -378,44 +371,34 @@ Compiler: GCC 11.4.0 + CUDA 12.6.68
 This is a test for correctness, NOT a benchmark.
 
 DivBounded, d = rand() + 1
-d: 2078777849,  reference: 347.14 us,   target: 348.16 us
-d: 402477966,   reference: 346.11 us,   target: 347.14 us
-d: 1121148636,  reference: 345.09 us,   target: 346.11 us
-d: 1443389175,  reference: 347.14 us,   target: 348.16 us
-d: 1673025871,  reference: 347.14 us,   target: 347.14 us
+d: 901392814,   reference: 349.18 us,   target: 345.09 us
+d: 1124637152,  reference: 347.14 us,   target: 347.14 us
+d: 1276192512,  reference: 346.11 us,   target: 347.14 us
+d: 2140560284,  reference: 347.14 us,   target: 346.11 us
+d: 407120803,   reference: 347.14 us,   target: 346.11 us
 
 DivBounded, d = 2^31
-d: 2147483648,  reference: 347.14 us,   target: 347.14 us
+d: 2147483648,  reference: 346.11 us,   target: 347.14 us
 
 DivBounded, d > 2^31
-d: 3382218489,  reference: 346.11 us,   target: 347.14 us
+d: 2371404386,  reference: 347.14 us,   target: 345.09 us
 
 This is highly probable to fail for DivBounded due to n >= 2^31
-Error: 4145580802 / 1848127918 = 2, target returns: 0
+Error: 3262921810 / 705644972 = 4, target returns: 0
 
 Div, d = UINT32_MAX - rand()
-d: 3567593624,  reference: 347.14 us,   target: 347.10 us
-d: 2646522883,  reference: 346.11 us,   target: 347.14 us
-d: 2363148066,  reference: 347.14 us,   target: 347.14 us
-d: 3847857914,  reference: 347.14 us,   target: 348.16 us
-d: 2944589833,  reference: 347.14 us,   target: 348.16 us
-d: 3929178683,  reference: 346.24 us,   target: 347.14 us
-d: 4151707612,  reference: 347.14 us,   target: 346.11 us
-d: 2357112109,  reference: 347.14 us,   target: 348.16 us
-d: 3209624395,  reference: 347.14 us,   target: 347.14 us
-d: 2712703575,  reference: 346.11 us,   target: 346.11 us
+d: 4017483895,  reference: 345.09 us,   target: 348.16 us
+d: 3302132809,  reference: 346.11 us,   target: 347.14 us
+d: 2480363585,  reference: 346.11 us,   target: 347.14 us
+d: 2417837635,  reference: 346.11 us,   target: 348.16 us
+d: 3521900964,  reference: 347.14 us,   target: 347.26 us
 
 Div, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()
-d: 2236890087,  reference: 346.11 us,   target: 348.16 us
-d: 4184200621,  reference: 346.11 us,   target: 347.14 us
-d: 3301258056,  reference: 346.11 us,   target: 348.16 us
-d: 2900419013,  reference: 347.14 us,   target: 347.14 us
-d: 2997091688,  reference: 348.16 us,   target: 347.14 us
-d: 4012162948,  reference: 347.14 us,   target: 347.14 us
-d: 2363263881,  reference: 346.11 us,   target: 346.11 us
-d: 3703346868,  reference: 347.14 us,   target: 346.27 us
-d: 4259161815,  reference: 346.11 us,   target: 347.14 us
-d: 3981441505,  reference: 346.11 us,   target: 347.14 us
+d: 3475814616,  reference: 345.09 us,   target: 348.16 us
+d: 2428359010,  reference: 346.11 us,   target: 347.14 us
+d: 3351093679,  reference: 347.14 us,   target: 347.14 us
+d: 2389989037,  reference: 348.16 us,   target: 349.18 us
+d: 3844698040,  reference: 346.11 us,   target: 347.14 us
 ```
 
 ### Python results
