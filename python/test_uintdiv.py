@@ -1,3 +1,6 @@
+# Copyright (c) 2024 Yifei Li
+# SPDX-License-Identifier: MIT
+
 from uintdiv import U32Div
 from random import randint, seed
 import time

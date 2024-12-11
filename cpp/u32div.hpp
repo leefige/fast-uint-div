@@ -1,3 +1,8 @@
+/*!
+ * Copyright (c) 2024 Yifei Li
+ * SPDX-License-Identifier: MIT
+ */
+
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>

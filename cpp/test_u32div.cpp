@@ -1,3 +1,8 @@
+/*!
+ * Copyright (c) 2024 Yifei Li
+ * SPDX-License-Identifier: MIT
+ */
+
 #include "u32div.hpp"
 
 #include <algorithm>
