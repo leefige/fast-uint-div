@@ -264,7 +264,7 @@ d: 1831545208,	slow: 8609 us,	fast: 1420 us,	speedup: 6.062676
 DivBounded, d = 2^31
 d: 2147483648,	slow: 8681 us,	fast: 1423 us,	speedup: 6.100492
 
-This is intended to fail for DivBounded due to d > 2^31
+DivBounded, d > 2^31
 d: 2147483649,	slow: 8488 us,	fast: 1423 us,	speedup: 5.964863
 
 This is highly probable to fail for DivBounded due to n >= 2^31
