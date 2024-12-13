@@ -31,7 +31,6 @@ __device__ __forceinline__ my_clock_t get_clock() {
 
 namespace impl {
 
-// one thread computes all elements
 struct KernelImpl {
   template <typename Func>
   __device__ __forceinline__ void self_op(uint32_t &x, const U32Div &div,
@@ -54,7 +53,7 @@ struct KernelImpl {
       regs[i] = dividends[threadIdx.x + i * BLOCK];
     }
 
-// warm-up
+    // warm-up
 #pragma unroll
     for (int i = 0; i < N_REGS; ++i) {
       self_op(regs[i], div, Func());
@@ -91,7 +90,7 @@ struct KernelImpl {
       *cycles = cycles_1 - cycles_0;
     }
 
-// store
+    // store
 #pragma unroll
     for (int i = 0; i < N_REGS; ++i) {
       out[threadIdx.x + i * BLOCK] = regs[i];
@@ -106,6 +105,7 @@ template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1,
 __global__ void __launch_bounds__(BLOCK, 1)
     kernel_reference(my_clock_t *cycles, uint32_t *out,
                      const uint32_t *dividends, const U32Div div) {
+  // use ptx to prevent compiler optimization
   KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, DivideRefPtx>(
       cycles, out, dividends, div);
 }
