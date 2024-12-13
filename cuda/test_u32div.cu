@@ -25,7 +25,6 @@ static_assert(TEST_COUNT % HOST_THREAD_COUNT == 0,
 
 namespace impl {
 
-// one thread computes all elements
 template <int BLOCK, int UNROLL, typename Func>
 __device__ __forceinline__ void kernel_impl(uint32_t *out,
                                             const uint32_t *dividends,
