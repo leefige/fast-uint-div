@@ -17,166 +17,169 @@
 #include <utility>
 #include <vector>
 
-static constexpr int HOST_THREAD_COUNT = 16;
-static constexpr int WARP_SIZE = 32;
 // we use only 1 warp for benchmark
+static constexpr int WARP_SIZE = 32;
 static constexpr int CTA_SIZE = WARP_SIZE;
-static constexpr int TEST_COUNT = 1 << 24;
-static_assert(TEST_COUNT % HOST_THREAD_COUNT == 0,
-              "requires TEST_COUNT % HOST_THREAD_COUNT == 0");
 
 namespace impl {
 
 // one thread computes all elements
 struct KernelImpl {
-  template <int BLOCK, int UNROLL, typename Func>
+  template <typename Func>
+  __device__ __forceinline__ void self_op(uint32_t &x, const U32Div &div,
+                                          Func &&func) const {
+    x = func(x, div);
+    return;
+  }
+
+  template <int BLOCK, int UNROLL_0, int UNROLL_1, typename Func>
   __device__ __forceinline__ void Run(clock_t *cycles, uint32_t *out,
                                       const uint32_t *dividends,
                                       const U32Div &div) const {
-    constexpr int PACK = 16 / sizeof(uint32_t);
-    using VecT = Vec<PACK, uint32_t>;
-    static_assert(sizeof(VecT) == sizeof(uint4),
-                  "assert sizeof(VecT) == sizeof(uint4)");
-    static_assert(TEST_COUNT % (BLOCK * UNROLL * PACK) == 0,
-                  "requires TEST_COUNT % (BLOCK * UNROLL * PACK) == 0");
+    static_assert(UNROLL_0 < UNROLL_1,
+                  "UNROLL_0 should be smaller than UNROLL_1");
+    uint32_t regs[UNROLL_1];
 
-    VecT v_in[UNROLL];
-    const VecT *in_ptr = reinterpret_cast<const VecT *>(dividends) +
-                         blockIdx.x * BLOCK * UNROLL + threadIdx.x;
+    // load
 #pragma unroll
-    for (int i = 0; i < UNROLL; ++i) {
-      // load next vec
-      v_in[i] = *(in_ptr + i * BLOCK);
+    for (int i = 0; i < UNROLL_1; ++i) {
+      regs[i] = dividends[threadIdx.x + i * BLOCK];
     }
 
-    VecT v_out[UNROLL];
+// warm-up
 #pragma unroll
-    for (int i = 0; i < UNROLL; ++i) {
-      for (int k = 0; k < PACK; ++k) {
-        v_out[i].data[k] = Func()(v_in[i].data[k], div);
-      }
+    for (int i = 0; i < UNROLL_1; ++i) {
+      self_op(regs[i], div, Func());
     }
 
-    VecT *out_ptr = reinterpret_cast<VecT *>(out) +
-                    blockIdx.x * BLOCK * UNROLL + threadIdx.x;
+    clock_t start, end;
+
+    // first pass
+    start = clock();
 #pragma unroll
-    for (int i = 0; i < UNROLL; ++i) {
-      *(out_ptr + i * BLOCK) = v_out[i];
+    for (int i = 0; i < UNROLL_1; ++i) {
+      self_op(regs[i], div, Func());
     }
+    end = clock();
+    clock_t cycles_1 = end - start;
+
+    // second pass
+    start = clock();
+#pragma unroll
+    for (int i = 0; i < UNROLL_0; ++i) {
+      self_op(regs[i], div, Func());
+    }
+    end = clock();
+    clock_t cycles_0 = end - start;
+
+    // time it
+    if (blockIdx.x == 0 && threadIdx.x == 0) {
+      *cycles = cycles_1 - cycles_0;
+    }
+
+// store
+#pragma unroll
+    for (int i = 0; i < UNROLL_1; ++i) {
+      out[threadIdx.x + i * BLOCK] = regs[i];
+    }
+
     return;
   }
 };
 
-template <int BLOCK, int UNROLL, typename KernelImpl>
+template <int BLOCK, int UNROLL_0, int UNROLL_1, typename KernelImpl>
 __global__ void __launch_bounds__(BLOCK, 1)
     kernel_reference(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                      const U32Div div) {
-  KernelImpl().template Run<BLOCK, UNROLL, DivideRef>(cycles, out, dividends,
-                                                      div);
+  KernelImpl().template Run<BLOCK, UNROLL_0, UNROLL_1, DivideRef>(
+      cycles, out, dividends, div);
 }
 
-template <int BLOCK, int UNROLL, typename KernelImpl>
+template <int BLOCK, int UNROLL_0, int UNROLL_1, typename KernelImpl>
 __global__ void __launch_bounds__(BLOCK, 1)
     kernel_div(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                const U32Div div) {
-  KernelImpl().template Run<BLOCK, UNROLL, Divide>(cycles, out, dividends, div);
+  KernelImpl().template Run<BLOCK, UNROLL_0, UNROLL_1, Divide>(cycles, out,
+                                                               dividends, div);
 }
 
-template <int BLOCK, int UNROLL, typename KernelImpl>
+template <int BLOCK, int UNROLL_0, int UNROLL_1, typename KernelImpl>
 __global__ void __launch_bounds__(BLOCK, 1)
     kernel_div_bounded(clock_t *cycles, uint32_t *out,
                        const uint32_t *dividends, const U32Div div) {
-  KernelImpl().template Run<BLOCK, UNROLL, DivideBounded>(cycles, out,
-                                                          dividends, div);
+  KernelImpl().template Run<BLOCK, UNROLL_0, UNROLL_1, DivideBounded>(
+      cycles, out, dividends, div);
 }
 
 } // namespace impl
 
-template <int BLOCK, int UNROLL>
+template <int BLOCK, int UNROLL_0, int UNROLL_1>
 struct KernelReference {
   void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                   const U32Div &div, int n_blocks, cudaStream_t stream) const {
-    impl::kernel_reference<BLOCK, UNROLL, impl::KernelImpl>
+    impl::kernel_reference<BLOCK, UNROLL_0, UNROLL_1, impl::KernelImpl>
         <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
   }
 };
 
-template <int BLOCK, int UNROLL>
+template <int BLOCK, int UNROLL_0, int UNROLL_1>
 struct KernelDiv {
   void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                   const U32Div &div, int n_blocks, cudaStream_t stream) const {
-    impl::kernel_div<BLOCK, UNROLL, impl::KernelImpl>
+    impl::kernel_div<BLOCK, UNROLL_0, UNROLL_1, impl::KernelImpl>
         <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
   }
 };
 
-template <int BLOCK, int UNROLL>
+template <int BLOCK, int UNROLL_0, int UNROLL_1>
 struct KernelDivBounded {
   void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                   const U32Div &div, int n_blocks, cudaStream_t stream) const {
-    impl::kernel_div_bounded<BLOCK, UNROLL, impl::KernelImpl>
+    impl::kernel_div_bounded<BLOCK, UNROLL_0, UNROLL_1, impl::KernelImpl>
         <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
   }
 };
 
-template <template <int BLOCK, int UNROLL> typename Kernel>
+template <template <int BLOCK, int UNROLL_0, int UNROLL_1> typename Kernel>
 class Test {
-
-  static constexpr int UNROLL = 4;
-  static constexpr int ELEM_PER_THREAD = TEST_COUNT / HOST_THREAD_COUNT;
+  static constexpr int N_ROUNDS = 50;
+  static constexpr int UNROLL_0 = 64;
+  static constexpr int UNROLL_1 = 96;
+  static constexpr int LENGTH = UNROLL_1 * CTA_SIZE;
   // we use only 1 block for benchmark
   static constexpr int CTA_COUNT = 1;
 
 public:
-  explicit Test(uint32_t d_, bool large_n_ = false)
-      : thds(HOST_THREAD_COUNT), n_h(TEST_COUNT), out_h(TEST_COUNT),
-        ref_h(TEST_COUNT), target_h(TEST_COUNT), div(d_), total_time_slow(0),
-        total_time_fast(0), large_n(large_n_) {
+  explicit Test(uint32_t d_) : div(d_), total_time_slow(0), total_time_fast(0) {
     setup();
   }
   virtual ~Test() { cleanup(); }
 
   void Run() {
-    prelude();
+    CHECK_CUDA(cudaMemsetAsync(n_d, -1, LENGTH * sizeof(uint32_t), stream));
 
     /* run reference */
-    if (!run_it(total_time_slow, cycles_slow, ref_h, ref_d, "reference",
-                KernelReference<CTA_SIZE, UNROLL>())) {
-      printf("[Error] reference kernel wrong answer\n");
-      return;
-    }
+    run_it(total_time_slow, cycles_slow, ref_d, "reference",
+           KernelReference<CTA_SIZE, UNROLL_0, UNROLL_1>());
 
     /* run target */
-    if (!run_it(total_time_fast, cycles_fast, target_h, target_d, "target",
-                Kernel<CTA_SIZE, UNROLL>())) {
-      return;
-    }
+    run_it(total_time_fast, cycles_fast, target_d, "target",
+           Kernel<CTA_SIZE, UNROLL_0, UNROLL_1>());
 
-    printf("d: %u,\treference: %lld us,\ttarget: %lld us\n", div.GetD(),
-           static_cast<long long>(total_time_slow),
+    CHECK_CUDA(cudaStreamSynchronize(stream));
+
+    printf("1 warp, #invocation: %d,\treference: %lld cycles,\ttarget: "
+           "%lld cycles\n",
+           UNROLL_1 - UNROLL_0, static_cast<long long>(total_time_slow),
            static_cast<long long>(total_time_fast));
     return;
   }
 
 private:
-  template <typename Func>
-  void host_threading(Func &&func) {
-    if (thds.size() < HOST_THREAD_COUNT) {
-      thds.resize(HOST_THREAD_COUNT);
-    }
-    for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
-      thds[i] = std::thread(std::forward<Func>(func), i);
-    }
-    for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
-      thds[i].join();
-    }
-    return;
-  }
-
   void setup() {
-    CHECK_CUDA(cudaMalloc(&n_d, n_h.size() * sizeof(uint32_t)));
-    CHECK_CUDA(cudaMalloc(&ref_d, ref_h.size() * sizeof(uint32_t)));
-    CHECK_CUDA(cudaMalloc(&target_d, target_h.size() * sizeof(uint32_t)));
+    CHECK_CUDA(cudaMalloc(&n_d, LENGTH * sizeof(uint32_t)));
+    CHECK_CUDA(cudaMalloc(&ref_d, LENGTH * sizeof(uint32_t)));
+    CHECK_CUDA(cudaMalloc(&target_d, LENGTH * sizeof(uint32_t)));
     CHECK_CUDA(cudaMalloc(&cycles_fast, sizeof(clock_t)));
     CHECK_CUDA(cudaMalloc(&cycles_slow, sizeof(clock_t)));
     CHECK_CUDA(cudaStreamCreate(&stream));
@@ -193,79 +196,17 @@ private:
     return;
   }
 
-  void prelude() {
-    /* generate dividends */
-    host_threading([&](int i) {
-      using Dist = std::uniform_int_distribution<uint32_t>;
-      std::default_random_engine rng(i);
-      std::shared_ptr<Dist> dist;
-      if (large_n) {
-        dist = std::make_shared<Dist>(0, UINT32_MAX);
-      } else {
-        dist = std::make_shared<Dist>(0, INT32_MAX);
-      }
-
-      for (int j = 0; j < ELEM_PER_THREAD; ++j) {
-        n_h[i * ELEM_PER_THREAD + j] = (*dist)(rng);
-      }
-    });
-
-    /* copy to device */
-    CHECK_CUDA(cudaMemcpyAsync(n_d, n_h.data(), n_h.size() * sizeof(uint32_t),
-                               cudaMemcpyHostToDevice, stream));
-
-    /* run host */
-    host_threading([&](int i) {
-      for (int j = 0; j < ELEM_PER_THREAD; ++j) {
-        out_h[i * ELEM_PER_THREAD + j] =
-            n_h[i * ELEM_PER_THREAD + j] / div.GetD();
-      }
-    });
-    return;
-  }
-
   template <typename Func>
-  bool run_it(clock_t &duration, clock_t *cycles,
-              std::vector<uint32_t> &data_host, uint32_t *data_device,
+  void run_it(clock_t &duration, clock_t *cycles, uint32_t *data_device,
               const char *name, Func &&func) {
-    // warmup
-    func(cycles, data_device, n_d, div, CTA_COUNT, stream);
-    CHECK_KERNEL();
-    // run
-    func(cycles, data_device, n_d, div, CTA_COUNT, stream);
-    CHECK_KERNEL();
+    for (int i = 0; i < N_ROUNDS; ++i) {
+      func(cycles, data_device, n_d, div, CTA_COUNT, stream);
+      CHECK_KERNEL();
+    }
     CHECK_CUDA(cudaMemcpyAsync(&duration, cycles, sizeof(clock_t),
                                cudaMemcpyDeviceToHost, stream));
-    CHECK_CUDA(cudaMemcpyAsync(data_host.data(), data_device,
-                               data_host.size() * sizeof(uint32_t),
-                               cudaMemcpyDeviceToHost, stream));
-    CHECK_CUDA(cudaStreamSynchronize(stream));
 
-    // check
-    std::vector<bool> passed(HOST_THREAD_COUNT, true);
-    std::vector<std::string> errors(HOST_THREAD_COUNT);
-    host_threading([&](int i) {
-      for (int j = 0; j < ELEM_PER_THREAD; ++j) {
-        int idx = i * ELEM_PER_THREAD + j;
-        if (out_h[idx] != data_host[idx]) {
-          char buf[512];
-          snprintf(buf, sizeof(buf), "Error: %u / %u = %u, %s returns: %u",
-                   n_h[idx], div.GetD(), out_h[idx], name, data_host[idx]);
-          errors[i] = buf;
-          passed[i] = false;
-          break;
-        }
-      }
-    });
-    if (std::any_of(passed.begin(), passed.end(), [](bool x) { return !x; })) {
-      for (int i = 0; i < HOST_THREAD_COUNT; ++i) {
-        if (!passed[i]) {
-          printf("%s\n", errors[i].c_str());
-          return false;
-        }
-      }
-    }
-    return true;
+    return;
   }
 
   uint32_t *n_d;
@@ -276,12 +217,6 @@ private:
   clock_t *cycles_fast;
 
   cudaStream_t stream;
-
-  std::vector<std::thread> thds;
-  std::vector<uint32_t> n_h;
-  std::vector<uint32_t> out_h;
-  std::vector<uint32_t> ref_h;
-  std::vector<uint32_t> target_h;
 
   U32Div div;
   clock_t total_time_slow;
@@ -294,50 +229,22 @@ using TestDiv = Test<KernelDiv>;
 
 int main() {
   constexpr int N_CASES = 5;
-  puts("This is a test for correctness, NOT a benchmark.\n");
 
   srand((unsigned)time(nullptr));
 
-  puts("DivBounded, d = rand() + 1");
+  puts("DivBounded");
   for (int i = 0; i < N_CASES; i++) {
     uint32_t d = rand() + 1U;
     TestDivBounded test(d);
     test.Run();
   }
 
-  puts("\nDivBounded, d = 2^31");
-  {
+  puts("\nDiv");
+  for (int i = 0; i < N_CASES; i++) {
     uint32_t d = (1U << 31);
-    TestDivBounded test(d);
-    test.Run();
-  }
-
-  puts("\nDivBounded, d > 2^31");
-  {
-    uint32_t d = UINT32_MAX - rand();
-    TestDivBounded test(d);
-    test.Run();
-  }
-
-  puts("\nThis is highly probable to fail for DivBounded due to n >= 2^31");
-  {
-    uint32_t d = rand() + 1U;
-    TestDivBounded test(d, true);
-    test.Run();
-  }
-
-  puts("\nDiv, d = UINT32_MAX - rand()");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = UINT32_MAX - rand();
     TestDiv test(d);
     test.Run();
   }
 
-  puts("\nDiv, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = UINT32_MAX - rand();
-    TestDiv test(d, true);
-    test.Run();
-  }
   return 0;
 }
