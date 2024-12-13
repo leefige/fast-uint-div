@@ -14,12 +14,20 @@ set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -Xptxas -warn-spills")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --extended-lambda")
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -expt-relaxed-constexpr")
 
-file(GLOB_RECURSE CUDA_SRC *.cu)
-add_executable(uint-div-cuda ${CUDA_SRC})
-target_include_directories(uint-div-cuda
+add_executable(uint-div-cuda-test test_u32div.cu)
+target_include_directories(uint-div-cuda-test
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
 )
 if(MSVC)
-  target_link_options(uint-div-cuda
+  target_link_options(uint-div-cuda-test
+    PRIVATE "/NODEFAULTLIB:libcmt.lib")
+endif()
+
+add_executable(uint-div-cuda-bench bench_u32div.cu)
+target_include_directories(uint-div-cuda-bench
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+)
+if(MSVC)
+  target_link_options(uint-div-cuda-bench
     PRIVATE "/NODEFAULTLIB:libcmt.lib")
 endif()
