@@ -158,8 +158,9 @@ struct KernelDivBounded {
   }
 };
 
-template <int N_REGS, template <int BLOCK, int N_REGS, int UNROLL_0,
-                                int UNROLL_1> typename Kernel>
+template <int N_REGS,
+          template <int /* BLOCK */, int /* N_REGS */, int /* UNROLL_0 */,
+                    int /* UNROLL_1 */> typename Kernel>
 class Test {
   static constexpr int N_ROUNDS = 50;
   static constexpr int UNROLL_0 = 64;
