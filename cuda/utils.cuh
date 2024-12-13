@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+#pragma once
+
 #include "u32div.cuh"
 
 #include <cstdint>
