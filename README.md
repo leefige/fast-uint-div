@@ -55,7 +55,10 @@ cmake --build build -v
 Run:
 
 ```sh
-build/cuda/uint-div-cuda
+# benchmark
+build/cuda/uint-div-cuda-bench
+# correctness check
+build/cuda/uint-div-cuda-test
 ```
 
 Windows with PowerShell:
@@ -70,10 +73,19 @@ cmake --build build --config Release -v
 Run:
 
 ```powershell
-.\build\cuda\Release\uint-div-cuda.exe
+# benchmark
+.\build\cuda\Release\uint-div-cuda-bench.exe
+# correctness check
+.\build\cuda\Release\uint-div-cuda-test.exe
 ```
 
-## Experiments
+### Python
+
+```sh
+python python/test_uintdiv.py
+```
+
+## Experiment results
 
 ### C++ benchmark
 
@@ -473,3 +485,24 @@ d: 3078107323,  reference: 864 us,      target: 3807 us
 d: 4173689700,  reference: 739 us,      target: 3291 us
 d: 3872453472,  reference: 701 us,      target: 3514 us
 ```
+
+## Citation
+
+This work is based on the following [article](https://arxiv.org/abs/2412.03680).
+If you find it helpful, please feel free to cite this article.
+
+```bibtex
+@misc{uintdiv2024,
+      title={Classic Round-Up Variant of Fast Unsigned Division by Constants: Algorithm and Full Proof},
+      author={Yifei Li},
+      year={2024},
+      eprint={2412.03680},
+      archivePrefix={arXiv},
+      primaryClass={cs.DS},
+      url={https://arxiv.org/abs/2412.03680},
+}
+```
+
+## License
+
+This work is licensed under the [MIT license](LICENSE).
