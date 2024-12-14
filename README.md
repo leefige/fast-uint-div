@@ -310,6 +310,77 @@ d: 2679466224,	slow: 8334 us,	fast: 2386 us,	speedup: 3.492875
 d: 3204216019,	slow: 8543 us,	fast: 2330 us,	speedup: 3.666524
 ```
 
+### CUDA benchmark
+
+One warp is used to collect the number of cycles for 32 invocations of built-in division, `DivBounded`, and `Div`.
+Each case scans ILP=1..8 by generating 1..8 independent dependency chains (`n regs per thread` in the following tables).
+"Reference" refers to a reference implementation with built-in integer division.
+"Target" refers to the fast division implementation, either `DivBounded` or `Div`.
+
+Conclusions:
+
+1. `DivBounded` achieves a speedup of 2.4x ~ 4.2x;
+2. `Div` achieves a speedup of 1.5x ~ 2.5x;
+3. `DivBounded` is 1.2 ~ 2.6 times as fast as `Div`.
+
+#### NVIDIA Ampere
+
+GPU: NVIDIA RTX A4000 @ 2.10GHz
+
+OS: Windows 11 23H2
+
+Compiler: MSVC 19.41.34123 + CUDA 12.4.131
+
+```plain
+DivBounded
+1 warp, 1 regs per thread, #invocation: 32, reference: 1477 cycles,     target: 392 cycles,     speedup: 3.77
+1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 407 cycles,     speedup: 4.27
+1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 407 cycles,     speedup: 4.27
+1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 482 cycles,     speedup: 3.97
+1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 482 cycles,     speedup: 3.97
+1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
+1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
+1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1060 cycles,    speedup: 2.41
+
+Div
+1 warp, 1 regs per thread, #invocation: 32, reference: 1478 cycles,     target: 836 cycles,     speedup: 1.77
+1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 799 cycles,     speedup: 2.18
+1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 799 cycles,     speedup: 2.18
+1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
+1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
+1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 1077 cycles,    speedup: 2.14
+1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 1077 cycles,    speedup: 2.14
+1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1272 cycles,    speedup: 2.01
+```
+
+GPU: NVIDIA RTX A4000 @ 2.10GHz
+
+OS: Ubuntu 22.04.3 LTS (WSL2)
+
+Compiler: GCC 11.4.0 + CUDA 12.6.68
+
+```plain
+DivBounded
+1 warp, 1 regs per thread, #invocation: 32, reference: 1477 cycles,     target: 393 cycles,     speedup: 3.76
+1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 408 cycles,     speedup: 4.26
+1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 408 cycles,     speedup: 4.26
+1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 487 cycles,     speedup: 3.93
+1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 487 cycles,     speedup: 3.93
+1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
+1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
+1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1060 cycles,    speedup: 2.41
+
+Div
+1 warp, 1 regs per thread, #invocation: 32, reference: 1478 cycles,     target: 802 cycles,     speedup: 1.84
+1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 827 cycles,     speedup: 2.10
+1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 827 cycles,     speedup: 2.10
+1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
+1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
+1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 896 cycles,     speedup: 2.57
+1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 896 cycles,     speedup: 2.57
+1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1274 cycles,    speedup: 2.01
+```
+
 ### CUDA results (NOT benchmark)
 
 Compute 2^24 (1 << 24) unsigned integer divisions and check the correctness.
@@ -319,7 +390,7 @@ Compute 2^24 (1 << 24) unsigned integer divisions and check the correctness.
 The kernels are memory-bound, and the execution time includes both memory access and computation.
 So the results do NOT reflect the performance of the fast division, and CANNOT be used as a benchmark.
 
-#### NVIDIA Ampere
+Since this is a correctness check, only one platform setting is shown here.
 
 GPU: NVIDIA RTX A4000 @ 2.10GHz
 
@@ -359,46 +430,6 @@ d: 4294963621,  reference: 346.11 us,   target: 347.14 us
 d: 4294951904,  reference: 348.16 us,   target: 346.11 us
 d: 4294936770,  reference: 345.12 us,   target: 347.14 us
 d: 4294944177,  reference: 346.11 us,   target: 347.14 us
-```
-
-GPU: NVIDIA RTX A4000 @ 2.10GHz
-
-OS: Ubuntu 22.04.3 LTS (WSL2)
-
-Compiler: GCC 11.4.0 + CUDA 12.6.68
-
-```plain
-This is a test for correctness, NOT a benchmark.
-
-DivBounded, d = rand() + 1
-d: 901392814,   reference: 349.18 us,   target: 345.09 us
-d: 1124637152,  reference: 347.14 us,   target: 347.14 us
-d: 1276192512,  reference: 346.11 us,   target: 347.14 us
-d: 2140560284,  reference: 347.14 us,   target: 346.11 us
-d: 407120803,   reference: 347.14 us,   target: 346.11 us
-
-DivBounded, d = 2^31
-d: 2147483648,  reference: 346.11 us,   target: 347.14 us
-
-DivBounded, d > 2^31
-d: 2371404386,  reference: 347.14 us,   target: 345.09 us
-
-This is highly probable to fail for DivBounded due to n >= 2^31
-Error: 3262921810 / 705644972 = 4, target returns: 0
-
-Div, d = UINT32_MAX - rand()
-d: 4017483895,  reference: 345.09 us,   target: 348.16 us
-d: 3302132809,  reference: 346.11 us,   target: 347.14 us
-d: 2480363585,  reference: 346.11 us,   target: 347.14 us
-d: 2417837635,  reference: 346.11 us,   target: 348.16 us
-d: 3521900964,  reference: 347.14 us,   target: 347.26 us
-
-Div, d = UINT32_MAX - rand(), n = UINT32_MAX - rand()
-d: 3475814616,  reference: 345.09 us,   target: 348.16 us
-d: 2428359010,  reference: 346.11 us,   target: 347.14 us
-d: 3351093679,  reference: 347.14 us,   target: 347.14 us
-d: 2389989037,  reference: 348.16 us,   target: 349.18 us
-d: 3844698040,  reference: 346.11 us,   target: 347.14 us
 ```
 
 ### Python results
