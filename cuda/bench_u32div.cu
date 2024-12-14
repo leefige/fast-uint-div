@@ -20,18 +20,18 @@
 // we use only 1 warp for benchmark
 static constexpr int WARP_SIZE = 32;
 static constexpr int CTA_SIZE = WARP_SIZE;
-
-using my_clock_t = clock_t;
-
-__device__ __forceinline__ my_clock_t get_clock() {
-  uint32_t ret;
-  asm volatile("mov.u32 %0, %%clock;\n" : "=r"(ret));
-  return ret;
-}
+// we use only 1 block for benchmark
+static constexpr int CTA_COUNT = 1;
 
 namespace impl {
 
 struct KernelImpl {
+  __device__ __forceinline__ clock_t get_clock() const {
+    uint32_t ret;
+    asm volatile("mov.u32 %0, %%clock;\n" : "=r"(ret));
+    return ret;
+  }
+
   template <typename Func>
   __device__ __forceinline__ void self_op(uint32_t &x, const U32Div &div,
                                           Func &&func) const {
@@ -39,8 +39,33 @@ struct KernelImpl {
     return;
   }
 
+  template <int UNROLL, int N_REGS, typename Func>
+  __device__ __forceinline__ clock_t one_round(uint32_t (&regs)[N_REGS],
+                                               const U32Div &div,
+                                               Func &&func) const {
+    clock_t start = get_clock();
+
+    // invoke UNROLL times
+#pragma unroll
+    for (int i = 0; i < UNROLL; ++i) {
+#pragma unroll
+      for (int i = 0; i < N_REGS; ++i) {
+        self_op(regs[i], div, Func());
+      }
+    }
+
+    // sync warp to ensure invocation finished
+#pragma unroll
+    for (int i = 0; i < N_REGS; ++i) {
+      regs[i] = __shfl_sync(0xffffffff, regs[N_REGS - i], WARP_SIZE - 1 - i);
+    }
+
+    clock_t end = get_clock();
+    return end - start;
+  }
+
   template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1, typename Func>
-  __device__ __forceinline__ void Run(my_clock_t *cycles, uint32_t *out,
+  __device__ __forceinline__ void Run(clock_t *cycles, uint32_t *out,
                                       const uint32_t *dividends,
                                       const U32Div &div) const {
     static_assert(UNROLL_0 < UNROLL_1,
@@ -53,39 +78,16 @@ struct KernelImpl {
       regs[i] = dividends[threadIdx.x + i * BLOCK];
     }
 
-    // warm-up
+    // ensure regs loaded
 #pragma unroll
     for (int i = 0; i < N_REGS; ++i) {
       self_op(regs[i], div, Func());
     }
 
-    my_clock_t start, end;
+    clock_t cycles_0 = one_round<UNROLL_0, N_REGS>(regs, div, Func());
+    clock_t cycles_1 = one_round<UNROLL_1, N_REGS>(regs, div, Func());
 
-    // first pass
-    start = get_clock();
-#pragma unroll
-    for (int i = 0; i < UNROLL_0; ++i) {
-#pragma unroll
-      for (int i = 0; i < N_REGS; ++i) {
-        self_op(regs[i], div, Func());
-      }
-    }
-    end = get_clock();
-    my_clock_t cycles_0 = end - start;
-
-    // second pass
-    start = get_clock();
-#pragma unroll
-    for (int i = 0; i < UNROLL_1; ++i) {
-#pragma unroll
-      for (int i = 0; i < N_REGS; ++i) {
-        self_op(regs[i], div, Func());
-      }
-    }
-    end = get_clock();
-    my_clock_t cycles_1 = end - start;
-
-    // time it
+    // latency for UNROLL_1 - UNROLL_0 times
     if (blockIdx.x == 0 && threadIdx.x == 0) {
       *cycles = cycles_1 - cycles_0;
     }
@@ -103,17 +105,16 @@ struct KernelImpl {
 template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1,
           typename KernelImpl>
 __global__ void __launch_bounds__(BLOCK, 1)
-    kernel_reference(my_clock_t *cycles, uint32_t *out,
-                     const uint32_t *dividends, const U32Div div) {
-  // use ptx to prevent compiler optimization
-  KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, DivideRefPtx>(
+    kernel_reference(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
+                     const U32Div div) {
+  KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, DivideRef>(
       cycles, out, dividends, div);
 }
 
 template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1,
           typename KernelImpl>
 __global__ void __launch_bounds__(BLOCK, 1)
-    kernel_div(my_clock_t *cycles, uint32_t *out, const uint32_t *dividends,
+    kernel_div(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                const U32Div div) {
   KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, Divide>(
       cycles, out, dividends, div);
@@ -122,7 +123,7 @@ __global__ void __launch_bounds__(BLOCK, 1)
 template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1,
           typename KernelImpl>
 __global__ void __launch_bounds__(BLOCK, 1)
-    kernel_div_bounded(my_clock_t *cycles, uint32_t *out,
+    kernel_div_bounded(clock_t *cycles, uint32_t *out,
                        const uint32_t *dividends, const U32Div div) {
   KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, DivideBounded>(
       cycles, out, dividends, div);
@@ -132,7 +133,7 @@ __global__ void __launch_bounds__(BLOCK, 1)
 
 template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1>
 struct KernelReference {
-  void operator()(my_clock_t *cycles, uint32_t *out, const uint32_t *dividends,
+  void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                   const U32Div &div, int n_blocks, cudaStream_t stream) const {
     impl::kernel_reference<BLOCK, N_REGS, UNROLL_0, UNROLL_1, impl::KernelImpl>
         <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
@@ -141,7 +142,7 @@ struct KernelReference {
 
 template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1>
 struct KernelDiv {
-  void operator()(my_clock_t *cycles, uint32_t *out, const uint32_t *dividends,
+  void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                   const U32Div &div, int n_blocks, cudaStream_t stream) const {
     impl::kernel_div<BLOCK, N_REGS, UNROLL_0, UNROLL_1, impl::KernelImpl>
         <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
@@ -150,7 +151,7 @@ struct KernelDiv {
 
 template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1>
 struct KernelDivBounded {
-  void operator()(my_clock_t *cycles, uint32_t *out, const uint32_t *dividends,
+  void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
                   const U32Div &div, int n_blocks, cudaStream_t stream) const {
     impl::kernel_div_bounded<BLOCK, N_REGS, UNROLL_0, UNROLL_1,
                              impl::KernelImpl>
@@ -162,12 +163,15 @@ template <int N_REGS,
           template <int /* BLOCK */, int /* N_REGS */, int /* UNROLL_0 */,
                     int /* UNROLL_1 */> typename Kernel>
 class Test {
-  static constexpr int N_ROUNDS = 50;
+  /*
+   * Launch kernel for multiple rounds to:
+   *  1. warm-up loading module (device code);
+   *  2. eliminate potential overhead of context creation.
+   */
+  static constexpr int N_ROUNDS = 3;
   static constexpr int UNROLL_0 = 64;
   static constexpr int UNROLL_1 = 96;
   static constexpr int LENGTH = N_REGS * CTA_SIZE;
-  // we use only 1 block for benchmark
-  static constexpr int CTA_COUNT = 1;
 
 public:
   explicit Test(uint32_t d_) : div(d_), total_time_slow(0), total_time_fast(0) {
@@ -188,10 +192,13 @@ public:
 
     CHECK_CUDA(cudaStreamSynchronize(stream));
 
-    printf("1 warp, %02d regs per thread, #invocation: %d, "
-           "reference: %lld cycles,\ttarget: %lld cycles\n",
-           N_REGS, UNROLL_1 - UNROLL_0, static_cast<long long>(total_time_slow),
-           static_cast<long long>(total_time_fast));
+    printf("%d warp, %d regs per thread, #invocation: %d, "
+           "reference: %lld cycles,\ttarget: %lld cycles,\tspeedup: %.2lf\n",
+           CTA_SIZE / WARP_SIZE, N_REGS, UNROLL_1 - UNROLL_0,
+           static_cast<long long>(total_time_slow),
+           static_cast<long long>(total_time_fast),
+           static_cast<double>(total_time_slow) /
+               static_cast<double>(total_time_fast));
     return;
   }
 
@@ -200,8 +207,8 @@ private:
     CHECK_CUDA(cudaMalloc(&n_d, LENGTH * sizeof(uint32_t)));
     CHECK_CUDA(cudaMalloc(&ref_d, LENGTH * sizeof(uint32_t)));
     CHECK_CUDA(cudaMalloc(&target_d, LENGTH * sizeof(uint32_t)));
-    CHECK_CUDA(cudaMalloc(&cycles_fast, sizeof(my_clock_t)));
-    CHECK_CUDA(cudaMalloc(&cycles_slow, sizeof(my_clock_t)));
+    CHECK_CUDA(cudaMalloc(&cycles_fast, sizeof(clock_t)));
+    CHECK_CUDA(cudaMalloc(&cycles_slow, sizeof(clock_t)));
     CHECK_CUDA(cudaStreamCreate(&stream));
     return;
   }
@@ -217,13 +224,13 @@ private:
   }
 
   template <typename Func>
-  void run_it(my_clock_t &duration, my_clock_t *cycles, uint32_t *data_device,
+  void run_it(clock_t &duration, clock_t *cycles, uint32_t *data_device,
               const char *name, Func &&func) {
     for (int i = 0; i < N_ROUNDS; ++i) {
       func(cycles, data_device, n_d, div, CTA_COUNT, stream);
       CHECK_KERNEL();
     }
-    CHECK_CUDA(cudaMemcpyAsync(&duration, cycles, sizeof(my_clock_t),
+    CHECK_CUDA(cudaMemcpyAsync(&duration, cycles, sizeof(clock_t),
                                cudaMemcpyDeviceToHost, stream));
 
     return;
@@ -233,14 +240,14 @@ private:
   uint32_t *ref_d;
   uint32_t *target_d;
 
-  my_clock_t *cycles_slow;
-  my_clock_t *cycles_fast;
+  clock_t *cycles_slow;
+  clock_t *cycles_fast;
 
   cudaStream_t stream;
 
   U32Div div;
-  my_clock_t total_time_slow;
-  my_clock_t total_time_fast;
+  clock_t total_time_slow;
+  clock_t total_time_fast;
   bool large_n;
 };
 
@@ -249,66 +256,32 @@ using TestDivBounded = Test<N_REGS, KernelDivBounded>;
 template <int N_REGS>
 using TestDiv = Test<N_REGS, KernelDiv>;
 
+// Credit to: https://artificial-mind.net/blog/2020/10/31/constexpr-for
+template <auto Start, auto End, auto Inc, class F>
+constexpr void constexpr_for(F &&f) {
+  if constexpr (Start < End) {
+    f(std::integral_constant<decltype(Start), Start>());
+    constexpr_for<Start + Inc, End, Inc>(f);
+  }
+}
+
 int main() {
-  constexpr int N_CASES = 3;
+  constexpr int MAX_ILP_REGS = 8;
 
   srand((unsigned)time(nullptr));
+  uint32_t d = rand() + 1U;
 
   puts("DivBounded");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = rand() + 1U;
-    TestDivBounded<1> test(d);
+  constexpr_for<1, MAX_ILP_REGS + 1, 1>([&](auto i) {
+    TestDivBounded<i> test(d);
     test.Run();
-  }
-
-  puts("\nDivBounded");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = rand() + 1U;
-    TestDivBounded<4> test(d);
-    test.Run();
-  }
-
-  puts("\nDivBounded");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = rand() + 1U;
-    TestDivBounded<16> test(d);
-    test.Run();
-  }
-
-  puts("\nDivBounded");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = rand() + 1U;
-    TestDivBounded<64> test(d);
-    test.Run();
-  }
+  });
 
   puts("\nDiv");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = (1U << 31);
-    TestDiv<1> test(d);
+  constexpr_for<1, MAX_ILP_REGS + 1, 1>([&](auto i) {
+    TestDiv<i> test(d);
     test.Run();
-  }
-
-  puts("\nDiv");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = (1U << 31);
-    TestDiv<4> test(d);
-    test.Run();
-  }
-
-  puts("\nDiv");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = (1U << 31);
-    TestDiv<16> test(d);
-    test.Run();
-  }
-
-  puts("\nDiv");
-  for (int i = 0; i < N_CASES; i++) {
-    uint32_t d = (1U << 31);
-    TestDiv<64> test(d);
-    test.Run();
-  }
+  });
 
   return 0;
 }

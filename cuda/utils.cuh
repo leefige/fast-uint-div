@@ -36,16 +36,6 @@ struct alignas(sizeof(uint4)) Vec {
   T data[N];
 };
 
-struct DivideRefPtx {
-  __device__ __forceinline__ uint32_t operator()(uint32_t n,
-                                                 const U32Div &div) const {
-    uint32_t d = div.GetD();
-    uint32_t ret;
-    asm volatile("div.u32 %0, %1, %2;\n" : "=r"(ret) : "r"(n), "r"(d));
-    return ret;
-  }
-};
-
 struct DivideRef {
   __device__ __forceinline__ uint32_t operator()(uint32_t n,
                                                  const U32Div &div) const {
