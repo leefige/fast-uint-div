@@ -1,196 +1,126 @@
 /*!
  * Copyright (c) 2024 Yifei Li
  * SPDX-License-Identifier: MIT
+ *
+ * The implementation of constexpr_for is credit to Philip Trettner.
  */
 
 #include "utils.cuh"
 
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-#include <memory>
-#include <random>
-#include <string>
-#include <thread>
-#include <utility>
-#include <vector>
+#include <type_traits>
 
-// we use only 1 warp for benchmark
+// We use only 1 warp for benchmark.
 static constexpr int WARP_SIZE = 32;
 static constexpr int CTA_SIZE = WARP_SIZE;
-// we use only 1 block for benchmark
 static constexpr int CTA_COUNT = 1;
+
+/* Use the difference of two unrolling to represent the cycles of UNROLL_1 -
+ * UNROLL_0 invocations, eliminating the tailing effect and common overhead.
+ */
+static constexpr int UNROLL_0 = 32;
+static constexpr int UNROLL_1 = 64;
 
 namespace impl {
 
-struct KernelImpl {
-  __device__ __forceinline__ clock_t get_clock() const {
-    uint32_t ret;
-    asm volatile("mov.u32 %0, %%clock;\n" : "=r"(ret));
-    return ret;
-  }
-
-  template <typename Func>
-  __device__ __forceinline__ void self_op(uint32_t &x, const U32Div &div,
-                                          Func &&func) const {
-    x = func(x, div);
-    return;
-  }
-
-  template <int UNROLL, int N_REGS, typename Func>
-  __device__ __forceinline__ clock_t one_round(uint32_t (&regs)[N_REGS],
-                                               const U32Div &div,
-                                               Func &&func) const {
-    clock_t start = get_clock();
-
-    // invoke UNROLL times
-#pragma unroll
-    for (int i = 0; i < UNROLL; ++i) {
-#pragma unroll
-      for (int i = 0; i < N_REGS; ++i) {
-        self_op(regs[i], div, Func());
-      }
-    }
-
-    // sync warp to ensure invocation finished
-#pragma unroll
-    for (int i = 0; i < N_REGS; ++i) {
-      regs[i] = __shfl_sync(0xffffffff, regs[N_REGS - i], WARP_SIZE - 1 - i);
-    }
-
-    clock_t end = get_clock();
-    return end - start;
-  }
-
-  template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1, typename Func>
-  __device__ __forceinline__ void Run(clock_t *cycles, uint32_t *out,
-                                      const uint32_t *dividends,
-                                      const U32Div &div) const {
-    static_assert(UNROLL_0 < UNROLL_1,
-                  "UNROLL_0 should be smaller than UNROLL_1");
-    uint32_t regs[N_REGS];
-
-    // load
-#pragma unroll
-    for (int i = 0; i < N_REGS; ++i) {
-      regs[i] = dividends[threadIdx.x + i * BLOCK];
-    }
-
-    // ensure regs loaded
-#pragma unroll
-    for (int i = 0; i < N_REGS; ++i) {
-      self_op(regs[i], div, Func());
-    }
-
-    clock_t cycles_0 = one_round<UNROLL_0, N_REGS>(regs, div, Func());
-    clock_t cycles_1 = one_round<UNROLL_1, N_REGS>(regs, div, Func());
-
-    // latency for UNROLL_1 - UNROLL_0 times
-    if (blockIdx.x == 0 && threadIdx.x == 0) {
-      *cycles = cycles_1 - cycles_0;
-    }
-
-    // store
-#pragma unroll
-    for (int i = 0; i < N_REGS; ++i) {
-      out[threadIdx.x + i * BLOCK] = regs[i];
-    }
-
-    return;
-  }
-};
-
-template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1,
-          typename KernelImpl>
-__global__ void __launch_bounds__(BLOCK, 1)
-    kernel_reference(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
-                     const U32Div div) {
-  KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, DivideRef>(
-      cycles, out, dividends, div);
+__device__ __forceinline__ clock_t get_clock() {
+  uint32_t ret;
+  asm volatile("mov.u32 %0, %%clock;\n" : "=r"(ret));
+  return ret;
 }
 
-template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1,
-          typename KernelImpl>
+template <int BLOCK, int N_REGS, int UNROLL, typename Func>
 __global__ void __launch_bounds__(BLOCK, 1)
-    kernel_div(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
-               const U32Div div) {
-  KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, Divide>(
-      cycles, out, dividends, div);
-}
+    bench_kernel(clock_t *cycles, uint32_t *out, const U32Div div) {
+  uint32_t regs[N_REGS];
 
-template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1,
-          typename KernelImpl>
-__global__ void __launch_bounds__(BLOCK, 1)
-    kernel_div_bounded(clock_t *cycles, uint32_t *out,
-                       const uint32_t *dividends, const U32Div div) {
-  KernelImpl().template Run<BLOCK, N_REGS, UNROLL_0, UNROLL_1, DivideBounded>(
-      cycles, out, dividends, div);
+  // init
+#pragma unroll
+  for (int i = 0; i < N_REGS; ++i) {
+    regs[i] = threadIdx.x * BLOCK + i;
+  }
+
+  // self-MA to ensure regs ready
+#pragma unroll
+  for (int i = 0; i < N_REGS; ++i) {
+    regs[i] = regs[i] * regs[i] + regs[i];
+  }
+
+  // latency for UNROLL times
+  Func func;
+  clock_t start = get_clock();
+#pragma unroll
+  for (int i = 0; i < UNROLL; ++i) {
+#pragma unroll
+    for (int i = 0; i < N_REGS; ++i) {
+      regs[i] = func(regs[i], div);
+    }
+  }
+  clock_t end = get_clock();
+  *cycles = end - start;
+
+  // store
+#pragma unroll
+  for (int i = 0; i < N_REGS; ++i) {
+    out[threadIdx.x + i * BLOCK] = regs[i];
+  }
+  return;
 }
 
 } // namespace impl
 
-template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1>
-struct KernelReference {
-  void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
-                  const U32Div &div, int n_blocks, cudaStream_t stream) const {
-    impl::kernel_reference<BLOCK, N_REGS, UNROLL_0, UNROLL_1, impl::KernelImpl>
-        <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
+template <int BLOCK, int N_REGS, int UNROLL, typename DivideFunc>
+struct DivideKernel {
+  static void Run(clock_t *cycles, uint32_t *out, const U32Div &div,
+                  int n_blocks, cudaStream_t stream) {
+    impl::bench_kernel<BLOCK, N_REGS, UNROLL, DivideFunc>
+        <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, div);
   }
 };
 
-template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1>
-struct KernelDiv {
-  void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
-                  const U32Div &div, int n_blocks, cudaStream_t stream) const {
-    impl::kernel_div<BLOCK, N_REGS, UNROLL_0, UNROLL_1, impl::KernelImpl>
-        <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
-  }
-};
+template <int BLOCK, int N_REGS, int UNROLL>
+using KernelReference = DivideKernel<BLOCK, N_REGS, UNROLL, impl::DivideRef>;
 
-template <int BLOCK, int N_REGS, int UNROLL_0, int UNROLL_1>
-struct KernelDivBounded {
-  void operator()(clock_t *cycles, uint32_t *out, const uint32_t *dividends,
-                  const U32Div &div, int n_blocks, cudaStream_t stream) const {
-    impl::kernel_div_bounded<BLOCK, N_REGS, UNROLL_0, UNROLL_1,
-                             impl::KernelImpl>
-        <<<n_blocks, BLOCK, 0, stream>>>(cycles, out, dividends, div);
-  }
-};
+template <int BLOCK, int N_REGS, int UNROLL>
+using KernelDiv = DivideKernel<BLOCK, N_REGS, UNROLL, impl::Divide>;
 
-template <int N_REGS,
-          template <int /* BLOCK */, int /* N_REGS */, int /* UNROLL_0 */,
-                    int /* UNROLL_1 */> typename Kernel>
+template <int BLOCK, int N_REGS, int UNROLL>
+using KernelDivBounded =
+    DivideKernel<BLOCK, N_REGS, UNROLL, impl::DivideBounded>;
+
+template <int N_REGS, int UNROLL_0, int UNROLL_1,
+          template <int /* BLOCK */, int /* N_REGS */,
+                    int /* UNROLL */> typename Kernel>
 class Test {
-  /*
-   * Launch kernel for multiple rounds to:
+  /* Launch kernel for multiple rounds to:
    *  1. warm-up loading module (device code);
    *  2. eliminate potential overhead of context creation.
    */
   static constexpr int N_ROUNDS = 3;
-  static constexpr int UNROLL_0 = 64;
-  static constexpr int UNROLL_1 = 96;
   static constexpr int LENGTH = N_REGS * CTA_SIZE;
 
 public:
-  explicit Test(uint32_t d_) : div(d_), total_time_slow(0), total_time_fast(0) {
+  explicit Test(uint32_t d_)
+      : div(d_), cycles_slow_0(0), cycles_slow_1(0), cycles_fast_0(0),
+        cycles_fast_1(0) {
     setup();
   }
   virtual ~Test() { cleanup(); }
 
   void Run() {
-    CHECK_CUDA(cudaMemsetAsync(n_d, -1, LENGTH * sizeof(uint32_t), stream));
-
     /* run reference */
-    run_it(total_time_slow, cycles_slow, ref_d, "reference",
-           KernelReference<CTA_SIZE, N_REGS, UNROLL_0, UNROLL_1>());
+    run_async<KernelReference>(cycles_slow_0, cycles_slow_1);
 
     /* run target */
-    run_it(total_time_fast, cycles_fast, target_d, "target",
-           Kernel<CTA_SIZE, N_REGS, UNROLL_0, UNROLL_1>());
+    run_async<Kernel>(cycles_fast_0, cycles_fast_1);
 
     CHECK_CUDA(cudaStreamSynchronize(stream));
+
+    clock_t total_time_slow = cycles_slow_1 - cycles_slow_0;
+    clock_t total_time_fast = cycles_fast_1 - cycles_fast_0;
 
     printf("%d warp, %d regs per thread, #invocation: %d, "
            "reference: %lld cycles,\ttarget: %lld cycles,\tspeedup: %.2lf\n",
@@ -204,59 +134,65 @@ public:
 
 private:
   void setup() {
-    CHECK_CUDA(cudaMalloc(&n_d, LENGTH * sizeof(uint32_t)));
-    CHECK_CUDA(cudaMalloc(&ref_d, LENGTH * sizeof(uint32_t)));
-    CHECK_CUDA(cudaMalloc(&target_d, LENGTH * sizeof(uint32_t)));
-    CHECK_CUDA(cudaMalloc(&cycles_fast, sizeof(clock_t)));
-    CHECK_CUDA(cudaMalloc(&cycles_slow, sizeof(clock_t)));
+    CHECK_CUDA(cudaMalloc(&out_d, LENGTH * sizeof(uint32_t)));
+    CHECK_CUDA(cudaMalloc(&cycles_unroll_1, CTA_SIZE * sizeof(clock_t)));
+    CHECK_CUDA(cudaMalloc(&cycles_unroll_0, CTA_SIZE * sizeof(clock_t)));
     CHECK_CUDA(cudaStreamCreate(&stream));
     return;
   }
 
   void cleanup() {
     CHECK_CUDA(cudaStreamDestroy(stream));
-    CHECK_CUDA(cudaFree(cycles_fast));
-    CHECK_CUDA(cudaFree(cycles_slow));
-    CHECK_CUDA(cudaFree(target_d));
-    CHECK_CUDA(cudaFree(ref_d));
-    CHECK_CUDA(cudaFree(n_d));
+    CHECK_CUDA(cudaFree(cycles_unroll_1));
+    CHECK_CUDA(cudaFree(cycles_unroll_0));
+    CHECK_CUDA(cudaFree(out_d));
     return;
   }
 
-  template <typename Func>
-  void run_it(clock_t &duration, clock_t *cycles, uint32_t *data_device,
-              const char *name, Func &&func) {
+  template <template <int /* BLOCK */, int /* N_REGS */,
+                      int /* UNROLL */> typename Kern>
+  void run_async(clock_t &cycles_h_0, clock_t &cycles_h_1) {
     for (int i = 0; i < N_ROUNDS; ++i) {
-      func(cycles, data_device, n_d, div, CTA_COUNT, stream);
+      Kern<CTA_SIZE, N_REGS, UNROLL_0>::Run(cycles_unroll_0, out_d, div,
+                                            CTA_COUNT, stream);
       CHECK_KERNEL();
     }
-    CHECK_CUDA(cudaMemcpyAsync(&duration, cycles, sizeof(clock_t),
-                               cudaMemcpyDeviceToHost, stream));
 
+    for (int i = 0; i < N_ROUNDS; ++i) {
+      Kern<CTA_SIZE, N_REGS, UNROLL_1>::Run(cycles_unroll_1, out_d, div,
+                                            CTA_COUNT, stream);
+      CHECK_KERNEL();
+    }
+
+    // use the cycles of thread 0
+    CHECK_CUDA(cudaMemcpyAsync(&cycles_h_0, cycles_unroll_0, sizeof(clock_t),
+                               cudaMemcpyDeviceToHost, stream));
+    CHECK_CUDA(cudaMemcpyAsync(&cycles_h_1, cycles_unroll_1, sizeof(clock_t),
+                               cudaMemcpyDeviceToHost, stream));
     return;
   }
 
-  uint32_t *n_d;
-  uint32_t *ref_d;
-  uint32_t *target_d;
+  U32Div div;
+  clock_t cycles_slow_0;
+  clock_t cycles_slow_1;
+  clock_t cycles_fast_0;
+  clock_t cycles_fast_1;
 
-  clock_t *cycles_slow;
-  clock_t *cycles_fast;
+  uint32_t *out_d;
+  clock_t *cycles_unroll_0;
+  clock_t *cycles_unroll_1;
 
   cudaStream_t stream;
-
-  U32Div div;
-  clock_t total_time_slow;
-  clock_t total_time_fast;
-  bool large_n;
 };
 
 template <int N_REGS>
-using TestDivBounded = Test<N_REGS, KernelDivBounded>;
+using TestDivBounded = Test<N_REGS, UNROLL_0, UNROLL_1, KernelDivBounded>;
 template <int N_REGS>
-using TestDiv = Test<N_REGS, KernelDiv>;
+using TestDiv = Test<N_REGS, UNROLL_0, UNROLL_1, KernelDiv>;
 
-// Credit to: https://artificial-mind.net/blog/2020/10/31/constexpr-for
+/* Credit to Philip Trettner:
+ * https://artificial-mind.net/blog/2020/10/31/constexpr-for
+ */
 template <auto Start, auto End, auto Inc, class F>
 constexpr void constexpr_for(F &&f) {
   if constexpr (Start < End) {
