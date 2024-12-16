@@ -1,5 +1,44 @@
 # Fast Unsigned Integer Divsion by Constants
 
+Integer division is an expensive instruction on most architectures.
+Some architectures do not even provide a native integer division instruction, such as the NVIDIA GPU (note that PTX is not the actual instruction executed on the GPU, SASS is).
+In this case, the division is emulated by a software implementation.
+
+If the divisor is a constant, however, the division can be computed in about 5 inexpensive integer instructions at runtime, using a pre-computed magic number.
+This technique has long been used for compiler optimization.
+It is also useful for heterogeneous computing, e.g., with GPUs, where the magic number is computed on the host and the division is done on the device.
+
+This repository contains a C++ and a CUDA implementation of the classic round-up variant of fast unsigned integer division by constants (for details, see [this article](https://arxiv.org/abs/2412.03680)).
+Both implementations are benchmarked, and the results are presented in [experiment results](#experiment-results) section.
+The fast division outperforms the built-in integer division by up to 2x on x86, and up to 4.4x on AArch64.
+It also achieves up to 2.6x speedup on NVIDIA Ampere GPUs.
+
+Further, there is an even faster variant of the fast division when the dividends (and the divisor, on x86 only) are bounded.
+This bounded variant outperforms the general variant by up to 1.4x on x86 and AArch64, and up to 2.1x on NVIDIA Ampere GPUs.
+For details about the constraint, see [`u32div.hpp`](cpp/u32div.hpp) and [`u32div.cuh`](cuda/u32div.cuh).
+
+## Table of Contents
+
+- [Fast Unsigned Integer Divsion by Constants](#fast-unsigned-integer-divsion-by-constants)
+  - [Table of Contents](#table-of-contents)
+  - [Build and run](#build-and-run)
+    - [Requirements](#requirements)
+    - [C++](#c)
+    - [CUDA](#cuda)
+    - [Python](#python)
+  - [Experiment results](#experiment-results)
+    - [C++ benchmark](#c-benchmark)
+      - [Intel Core](#intel-core)
+      - [Intel Xeon](#intel-xeon)
+      - [Apple M3](#apple-m3)
+    - [CUDA benchmark](#cuda-benchmark)
+      - [NVIDIA Ampere](#nvidia-ampere)
+    - [CUDA results (NOT benchmark)](#cuda-results-not-benchmark)
+    - [Python results](#python-results)
+  - [Citation](#citation)
+  - [License](#license)
+
+
 ## Build and run
 
 ### Requirements
