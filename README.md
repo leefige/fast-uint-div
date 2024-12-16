@@ -326,14 +326,12 @@ d: 3204216019,	slow: 8543 us,	fast: 2330 us,	speedup: 3.666524
 
 One warp is used to collect the number of cycles for 32 invocations of built-in division, `DivBounded`, and `Div`.
 Each case scans ILP=1..8 by generating 1..8 independent dependency chains (`n regs per thread` in the following tables).
-"Reference" refers to a reference implementation with built-in integer division.
-"Target" refers to the fast division implementation, either `DivBounded` or `Div`.
 
 Conclusions:
 
-1. `DivBounded` achieves a speedup of 2.4x ~ 4.2x;
-2. `Div` achieves a speedup of 1.5x ~ 2.5x;
-3. `DivBounded` is 1.2 ~ 2.6 times as fast as `Div`.
+1. `DivBounded` achieves a speedup of 2.5x ~ 4.1x over built-in division;
+2. `Div` achieves a speedup of 1.6x ~ 2.6x over built-in division;
+3. `DivBounded` is 1.2 ~ 2.1 times as fast as `Div`.
 
 #### NVIDIA Ampere
 
@@ -341,56 +339,80 @@ GPU: NVIDIA RTX A4000 @ 2.10GHz
 
 OS: Windows 11 23H2
 
+NVIDIA driver: 566.03
+
 Compiler: MSVC 19.41.34123 + CUDA 12.4.131
 
 ```plain
-DivBounded
-1 warp, 1 regs per thread, #invocation: 32, reference: 1477 cycles,     target: 392 cycles,     speedup: 3.77
-1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 407 cycles,     speedup: 4.27
-1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 407 cycles,     speedup: 4.27
-1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 482 cycles,     speedup: 3.97
-1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 482 cycles,     speedup: 3.97
-1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
-1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
-1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1060 cycles,    speedup: 2.41
+Reference: built-in div, target: DivBounded
+1 warp, 1 regs per thread, #invocation: 32, reference: 1760 cycles,     target: 432 cycles,     speedup: 4.07
+1 warp, 2 regs per thread, #invocation: 32, reference: 1952 cycles,     target: 512 cycles,     speedup: 3.81
+1 warp, 3 regs per thread, #invocation: 32, reference: 2336 cycles,     target: 672 cycles,     speedup: 3.48
+1 warp, 4 regs per thread, #invocation: 32, reference: 2688 cycles,     target: 1068 cycles,    speedup: 2.52
+1 warp, 5 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 992 cycles,     speedup: 2.87
+1 warp, 6 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 1152 cycles,    speedup: 2.47
+1 warp, 7 regs per thread, #invocation: 32, reference: 3356 cycles,     target: 1344 cycles,    speedup: 2.50
+1 warp, 8 regs per thread, #invocation: 32, reference: 6041 cycles,     target: 1536 cycles,    speedup: 3.93
 
-Div
-1 warp, 1 regs per thread, #invocation: 32, reference: 1478 cycles,     target: 836 cycles,     speedup: 1.77
-1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 799 cycles,     speedup: 2.18
-1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 799 cycles,     speedup: 2.18
-1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
-1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
-1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 1077 cycles,    speedup: 2.14
-1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 1077 cycles,    speedup: 2.14
-1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1272 cycles,    speedup: 2.01
+Reference: built-in div, target: Div
+1 warp, 1 regs per thread, #invocation: 32, reference: 1760 cycles,     target: 832 cycles,     speedup: 2.12
+1 warp, 2 regs per thread, #invocation: 32, reference: 1952 cycles,     target: 1056 cycles,    speedup: 1.85
+1 warp, 3 regs per thread, #invocation: 32, reference: 2336 cycles,     target: 1109 cycles,    speedup: 2.11
+1 warp, 4 regs per thread, #invocation: 32, reference: 2688 cycles,     target: 1312 cycles,    speedup: 2.05
+1 warp, 5 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 1546 cycles,    speedup: 1.84
+1 warp, 6 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 1741 cycles,    speedup: 1.64
+1 warp, 7 regs per thread, #invocation: 32, reference: 3356 cycles,     target: 2027 cycles,    speedup: 1.66
+1 warp, 8 regs per thread, #invocation: 32, reference: 6041 cycles,     target: 2304 cycles,    speedup: 2.62
+
+Reference: Div, target: DivBounded
+1 warp, 1 regs per thread, #invocation: 32, reference: 832 cycles,      target: 432 cycles,     speedup: 1.93
+1 warp, 2 regs per thread, #invocation: 32, reference: 1056 cycles,     target: 512 cycles,     speedup: 2.06
+1 warp, 3 regs per thread, #invocation: 32, reference: 1109 cycles,     target: 672 cycles,     speedup: 1.65
+1 warp, 4 regs per thread, #invocation: 32, reference: 1312 cycles,     target: 1068 cycles,    speedup: 1.23
+1 warp, 5 regs per thread, #invocation: 32, reference: 1546 cycles,     target: 992 cycles,     speedup: 1.56
+1 warp, 6 regs per thread, #invocation: 32, reference: 1741 cycles,     target: 1152 cycles,    speedup: 1.51
+1 warp, 7 regs per thread, #invocation: 32, reference: 2027 cycles,     target: 1344 cycles,    speedup: 1.51
+1 warp, 8 regs per thread, #invocation: 32, reference: 2304 cycles,     target: 1536 cycles,    speedup: 1.50
 ```
 
 GPU: NVIDIA RTX A4000 @ 2.10GHz
 
 OS: Ubuntu 22.04.3 LTS (WSL2)
 
+NVIDIA driver: 566.03
+
 Compiler: GCC 11.4.0 + CUDA 12.6.68
 
 ```plain
-DivBounded
-1 warp, 1 regs per thread, #invocation: 32, reference: 1477 cycles,     target: 393 cycles,     speedup: 3.76
-1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 408 cycles,     speedup: 4.26
-1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 408 cycles,     speedup: 4.26
-1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 487 cycles,     speedup: 3.93
-1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 487 cycles,     speedup: 3.93
-1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
-1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 639 cycles,     speedup: 3.60
-1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1060 cycles,    speedup: 2.41
+Reference: built-in div, target: DivBounded
+1 warp, 1 regs per thread, #invocation: 32, reference: 1760 cycles,     target: 432 cycles,     speedup: 4.07
+1 warp, 2 regs per thread, #invocation: 32, reference: 1952 cycles,     target: 512 cycles,     speedup: 3.81
+1 warp, 3 regs per thread, #invocation: 32, reference: 2336 cycles,     target: 672 cycles,     speedup: 3.48
+1 warp, 4 regs per thread, #invocation: 32, reference: 2688 cycles,     target: 1068 cycles,    speedup: 2.52
+1 warp, 5 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 992 cycles,     speedup: 2.87
+1 warp, 6 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 1152 cycles,    speedup: 2.47
+1 warp, 7 regs per thread, #invocation: 32, reference: 3356 cycles,     target: 1344 cycles,    speedup: 2.50
+1 warp, 8 regs per thread, #invocation: 32, reference: 6041 cycles,     target: 1536 cycles,    speedup: 3.93
 
-Div
-1 warp, 1 regs per thread, #invocation: 32, reference: 1478 cycles,     target: 802 cycles,     speedup: 1.84
-1 warp, 2 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 827 cycles,     speedup: 2.10
-1 warp, 3 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 827 cycles,     speedup: 2.10
-1 warp, 4 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
-1 warp, 5 regs per thread, #invocation: 32, reference: 1914 cycles,     target: 1270 cycles,    speedup: 1.51
-1 warp, 6 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 896 cycles,     speedup: 2.57
-1 warp, 7 regs per thread, #invocation: 32, reference: 2301 cycles,     target: 896 cycles,     speedup: 2.57
-1 warp, 8 regs per thread, #invocation: 32, reference: 2555 cycles,     target: 1274 cycles,    speedup: 2.01
+Reference: built-in div, target: Div
+1 warp, 1 regs per thread, #invocation: 32, reference: 1760 cycles,     target: 832 cycles,     speedup: 2.12
+1 warp, 2 regs per thread, #invocation: 32, reference: 1952 cycles,     target: 1056 cycles,    speedup: 1.85
+1 warp, 3 regs per thread, #invocation: 32, reference: 2336 cycles,     target: 1056 cycles,    speedup: 2.21
+1 warp, 4 regs per thread, #invocation: 32, reference: 2688 cycles,     target: 1312 cycles,    speedup: 2.05
+1 warp, 5 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 1542 cycles,    speedup: 1.85
+1 warp, 6 regs per thread, #invocation: 32, reference: 2848 cycles,     target: 1738 cycles,    speedup: 1.64
+1 warp, 7 regs per thread, #invocation: 32, reference: 3356 cycles,     target: 2025 cycles,    speedup: 1.66
+1 warp, 8 regs per thread, #invocation: 32, reference: 6041 cycles,     target: 2304 cycles,    speedup: 2.62
+
+Reference: Div, target: DivBounded
+1 warp, 1 regs per thread, #invocation: 32, reference: 832 cycles,      target: 432 cycles,     speedup: 1.93
+1 warp, 2 regs per thread, #invocation: 32, reference: 1056 cycles,     target: 512 cycles,     speedup: 2.06
+1 warp, 3 regs per thread, #invocation: 32, reference: 1056 cycles,     target: 672 cycles,     speedup: 1.57
+1 warp, 4 regs per thread, #invocation: 32, reference: 1312 cycles,     target: 1068 cycles,    speedup: 1.23
+1 warp, 5 regs per thread, #invocation: 32, reference: 1542 cycles,     target: 992 cycles,     speedup: 1.55
+1 warp, 6 regs per thread, #invocation: 32, reference: 1738 cycles,     target: 1152 cycles,    speedup: 1.51
+1 warp, 7 regs per thread, #invocation: 32, reference: 2025 cycles,     target: 1344 cycles,    speedup: 1.51
+1 warp, 8 regs per thread, #invocation: 32, reference: 2304 cycles,     target: 1536 cycles,    speedup: 1.50
 ```
 
 ### CUDA results (NOT benchmark)
@@ -407,6 +429,8 @@ Since this is a correctness check, only one platform setting is shown here.
 GPU: NVIDIA RTX A4000 @ 2.10GHz
 
 OS: Windows 11 23H2
+
+NVIDIA driver: 566.03
 
 Compiler: MSVC 19.41.34123 + CUDA 12.4.131
 
