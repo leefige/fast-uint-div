@@ -16,8 +16,8 @@ Unix-like systems:
 Build:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -v
+cmake -S . -B build
+cmake --build build
 ```
 
 Run:
@@ -32,7 +32,7 @@ Build:
 
 ```powershell
 cmake -S . -B build
-cmake --build build --config Release -v
+cmake --build build --config Release
 ```
 
 Run:
@@ -48,8 +48,8 @@ Unix-like systems:
 Build:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_CUDA=ON
-cmake --build build -v
+cmake -S . -B build -DBUILD_CUDA=ON
+cmake --build build
 ```
 
 Run:
@@ -67,7 +67,7 @@ Build:
 
 ```powershell
 cmake -S . -B build -DBUILD_CUDA=ON
-cmake --build build --config Release -v
+cmake --build build --config Release
 ```
 
 Run:
