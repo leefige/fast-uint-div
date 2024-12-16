@@ -1,5 +1,7 @@
 # Fast Unsigned Integer Divsion by Constants
 
+[![DOI](https://zenodo.org/badge/899920976.svg)](https://doi.org/10.5281/zenodo.14502784)
+
 Integer division is an expensive instruction on most architectures.
 Some architectures do not even provide a native integer division instruction, such as the NVIDIA GPU (note that PTX is not the actual instruction executed on the GPU, SASS is).
 In this case, the division is emulated by a software implementation.
