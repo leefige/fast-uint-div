@@ -93,13 +93,15 @@ using KernelDivBounded =
 
 template <int N_REGS, int UNROLL_0, int UNROLL_1,
           template <int /* BLOCK */, int /* N_REGS */,
-                    int /* UNROLL */> typename Kernel>
+                    int /* UNROLL */> typename KernRef,
+          template <int /* BLOCK */, int /* N_REGS */,
+                    int /* UNROLL */> typename KernTarget>
 class Test {
   /* Launch kernel for multiple rounds to:
    *  1. warm-up loading module (device code);
    *  2. eliminate potential overhead of context creation.
    */
-  static constexpr int N_ROUNDS = 3;
+  static constexpr int N_ROUNDS = 5;
   static constexpr int LENGTH = N_REGS * CTA_SIZE;
 
 public:
@@ -112,10 +114,10 @@ public:
 
   void Run() {
     /* run reference */
-    run_async<KernelReference>(cycles_slow_0, cycles_slow_1);
+    run_async<KernRef>(cycles_slow_0, cycles_slow_1);
 
     /* run target */
-    run_async<Kernel>(cycles_fast_0, cycles_fast_1);
+    run_async<KernTarget>(cycles_fast_0, cycles_fast_1);
 
     CHECK_CUDA(cudaStreamSynchronize(stream));
 
@@ -153,13 +155,13 @@ private:
                       int /* UNROLL */> typename Kern>
   void run_async(clock_t &cycles_h_0, clock_t &cycles_h_1) {
     for (int i = 0; i < N_ROUNDS; ++i) {
-      Kern<CTA_SIZE, N_REGS, UNROLL_0>::Run(cycles_unroll_0, out_d, div,
+      Kern<CTA_SIZE, N_REGS, UNROLL_1>::Run(cycles_unroll_1, out_d, div,
                                             CTA_COUNT, stream);
       CHECK_KERNEL();
     }
 
     for (int i = 0; i < N_ROUNDS; ++i) {
-      Kern<CTA_SIZE, N_REGS, UNROLL_1>::Run(cycles_unroll_1, out_d, div,
+      Kern<CTA_SIZE, N_REGS, UNROLL_0>::Run(cycles_unroll_0, out_d, div,
                                             CTA_COUNT, stream);
       CHECK_KERNEL();
     }
@@ -186,9 +188,13 @@ private:
 };
 
 template <int N_REGS>
-using TestDivBounded = Test<N_REGS, UNROLL_0, UNROLL_1, KernelDivBounded>;
+using TestDivBounded =
+    Test<N_REGS, UNROLL_0, UNROLL_1, KernelReference, KernelDivBounded>;
 template <int N_REGS>
-using TestDiv = Test<N_REGS, UNROLL_0, UNROLL_1, KernelDiv>;
+using TestDiv = Test<N_REGS, UNROLL_0, UNROLL_1, KernelReference, KernelDiv>;
+template <int N_REGS>
+using TestSpeedup =
+    Test<N_REGS, UNROLL_0, UNROLL_1, KernelDiv, KernelDivBounded>;
 
 /* Credit to Philip Trettner:
  * https://artificial-mind.net/blog/2020/10/31/constexpr-for
@@ -207,15 +213,21 @@ int main() {
   srand((unsigned)time(nullptr));
   uint32_t d = rand() + 1U;
 
-  puts("DivBounded");
+  puts("Reference: built-in div, target: DivBounded");
   constexpr_for<1, MAX_ILP_REGS + 1, 1>([&](auto i) {
     TestDivBounded<i> test(d);
     test.Run();
   });
 
-  puts("\nDiv");
+  puts("\nReference: built-in div, target: Div");
   constexpr_for<1, MAX_ILP_REGS + 1, 1>([&](auto i) {
     TestDiv<i> test(d);
+    test.Run();
+  });
+
+  puts("\nReference: Div, target: DivBounded");
+  constexpr_for<1, MAX_ILP_REGS + 1, 1>([&](auto i) {
+    TestSpeedup<i> test(d);
     test.Run();
   });
 
